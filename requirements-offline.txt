@@ -1,0 +1,5 @@
+# Optional offline translation engine (adds ~1 GB: torch/stanza/spacy).
+# Install with:  pip install -r requirements-offline.txt
+# Build with:    .\build.ps1 -Offline
+-r requirements.txt
+argostranslate==1.11.0

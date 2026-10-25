@@ -1,0 +1,4 @@
+# Runtime dependencies (pinned for reproducible Windows builds)
+PySide6==6.12.0
+requests==2.34.2
+epitran==1.35.3

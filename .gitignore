@@ -1,0 +1,23 @@
+# Byte-compiled / caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Virtual environments
+.venv/
+.venv-build/
+venv/
+
+# PyInstaller output
+build/
+dist/
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Local model / audio caches (kept out of git)
+*.mp3
+models/
