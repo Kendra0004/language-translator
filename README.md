@@ -24,6 +24,16 @@ including 0.6× / 0.8× slow motion for learners.
   1. Google's public endpoint
   2. MyMemory
   3. *optional* Argostranslate offline model (auto-downloaded, cached)
+- **Auto word correction** (`Fix accents ✔` toggle, on by default):
+  - restores missing accents/cedillas: `tres → très`, `cancion → canción`,
+    `citta → città`, `coracao → coração`, `uber → über`
+  - fixes simple typos: `bonjur → bonjour`
+  - applied to **both panes** (typed text and translation output), every
+    changed word gets an amber underline with the original on hover, and the
+    status bar reports `✓ 2 accent(s)`
+  - ambiguity-safe: real unaccented words (`ou`, `la`, `a`, `cuando`, `si`)
+    are never "corrected" — a change only happens when the accented spelling
+    is far more frequent; the word you are currently typing is never touched
 - Find-in-text box, persisted window layout & language pair
 
 ## Running from source
@@ -64,6 +74,7 @@ app/
   ui/pronunciation_panel.py the dock: reading, IPA, cards, audio
   core/languages.py        language registry (add a language in one place)
   core/translator.py       engine fallback chain
+  core/correction.py       accent restoration + typo fixing
   core/pronunciation.py    word -> IPA, syllables, stress, liaisons
   core/phonetics.py        syllabification, stress rules, respelling tables
   core/tts.py              native-voice mp3 fetch + cache

@@ -34,3 +34,14 @@ def get_double(key: str, default: float = 1.0) -> float:
 
 def set_double(key: str, value: float) -> None:
     _settings.setValue(key, float(value))
+
+
+def get_bool(key: str, default: bool = True) -> bool:
+    value = _settings.value(key, default)
+    if isinstance(value, str):
+        return value.lower() in ("true", "1", "yes")
+    return bool(value)
+
+
+def set_bool(key: str, value: bool) -> None:
+    _settings.setValue(key, bool(value))

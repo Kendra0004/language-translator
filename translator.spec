@@ -9,7 +9,12 @@ hidden = (
     + collect_submodules("argostranslate")
     + collect_submodules("app")
 )
-datas = collect_data_files("epitran")  # pronunciation rule tables
+datas = (
+    collect_data_files("epitran")          # pronunciation rule tables
+    + collect_data_files("wordfreq")       # word frequency lists (correction)
+    + collect_data_files("langcodes")      # language tag data for wordfreq
+    + collect_data_files("spellchecker")   # typo dictionary
+)
 
 excludes = [
     # heavy Qt add-ons we never import

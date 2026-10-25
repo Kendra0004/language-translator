@@ -5,13 +5,14 @@ import base64
 import logging
 
 from PySide6.QtCore import QObject, Qt, QThread, QTimer, Signal, Slot
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QColor, QKeySequence, QTextCharFormat
+from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import (
     QComboBox, QDockWidget, QGridLayout, QLabel, QLineEdit, QPlainTextEdit,
-    QSplitter, QToolButton, QVBoxLayout, QWidget, QMainWindow,
+    QSplitter, QTextEdit, QToolButton, QVBoxLayout, QWidget, QMainWindow,
 )
 
-from ..core import languages, settings, translator
+from ..core import correction, languages, settings, translator
 from ..core.pronunciation import analyze
 from .pronunciation_panel import PronunciationPanel
 
@@ -53,6 +54,8 @@ class MainWindow(QMainWindow):
         self.resize(1120, 680)
         self._job = 0
         self._latest = 0
+        self._correcting = False
+        self._engine_status = ""
 
         # ---------------------------------------------------------- thread
         self._thread = QThread(self)
@@ -95,6 +98,15 @@ class MainWindow(QMainWindow):
         self.find_edit.setMaximumWidth(200)
         self.find_edit.textChanged.connect(self._find)
 
+        self.fix_btn = QToolButton()
+        self.fix_btn.setCheckable(True)
+        self.fix_btn.setText(self.tr("Fix accents \u2714"))
+        self.fix_btn.setToolTip(self.tr(
+            "Auto-correct missing accents and simple typos\n"
+            "in both panes (amber underline shows changes)"))
+        self.fix_btn.setChecked(settings.get_bool("fix_accents", True))
+        self.fix_btn.clicked.connect(self._on_fix_toggled)
+
         self.src_label = QLabel(self.tr("Type here"))
         self.tgt_label = QLabel(self.tr("Translation"))
 
@@ -103,7 +115,8 @@ class MainWindow(QMainWindow):
         grid.addWidget(self.src_combo, 1, 0)
         grid.addWidget(self.swap_btn, 1, 1)
         grid.addWidget(self.tgt_combo, 1, 2)
-        grid.addWidget(self.find_edit, 1, 3, alignment=Qt.AlignmentFlag.AlignRight)
+        grid.addWidget(self.fix_btn, 1, 3, alignment=Qt.AlignmentFlag.AlignRight)
+        grid.addWidget(self.find_edit, 1, 4, alignment=Qt.AlignmentFlag.AlignRight)
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(3, 1)
 
@@ -162,16 +175,94 @@ class MainWindow(QMainWindow):
         self._refresh_panel()
         self.statusBar().showMessage(self.tr("Ready"))
 
-    # ------------------------------------------------------------ translation
+    # ---------------------------------------------------------- translation
     @Slot()
     def _on_source_changed(self) -> None:
+        if not self._correcting and self.fix_btn.isChecked():
+            self._correct_source()
         self._debounce.start()
         self._refresh_panel()
 
     @Slot()
     def _on_lang_changed(self) -> None:
+        if self.fix_btn.isChecked():
+            self._correct_source()
         self._debounce.start()
         self._refresh_panel()
+
+    # ---------------------------------------------------------- correction
+    def _correct_source(self) -> None:
+        """Auto-fix accents/typos in the pane the user types into."""
+        text = self.src_text.toPlainText()
+        lang = self.src_combo.currentData()
+        if not text.strip() or lang not in correction.LANGS:
+            return
+        pos = self.src_text.textCursor().position()
+        skip = correction.word_range_at(text, pos)  # never fight live typing
+        res = correction.correct(text, lang, True, skip)
+        if not res.changes:
+            return
+        self._correcting = True
+        self.src_text.blockSignals(True)
+        tc = self.src_text.textCursor()
+        tc.beginEditBlock()
+        tc.select(QTextCursor.SelectionType.Document)
+        tc.insertText(res.text)
+        tc.endEditBlock()
+        delta = 0
+        for c in res.changes:
+            if c.start < pos:
+                delta += len(c.fixed) - len(c.original)
+        tc.setPosition(max(0, min(pos + delta, len(res.text))))
+        self.src_text.setTextCursor(tc)
+        self.src_text.blockSignals(False)
+        self._correcting = False
+        self._highlight(self.src_text, res.changes)
+        self._report(res.changes)
+
+    @Slot(bool)
+    def _on_fix_toggled(self, checked: bool) -> None:
+        settings.set_bool("fix_accents", checked)
+        if checked:
+            self._correct_source()
+            self._debounce.start()
+            self._refresh_panel()
+        else:
+            self._clear_highlights(self.src_text)
+            self._clear_highlights(self.out_text)
+            self.statusBar().showMessage(
+                self._engine_status or self.tr("Ready"))
+
+    def _highlight(self, pane: QPlainTextEdit,
+                   changes: list[correction.Change]) -> None:
+        fmt = QTextCharFormat()
+        fmt.setUnderlineColor(QColor(255, 165, 0))
+        fmt.setUnderlineStyle(QTextCharFormat.UnderlineStyle.SingleUnderline)
+        sels = []
+        for c in changes:
+            sel = QTextEdit.ExtraSelection()
+            sel.format = fmt
+            sel.format.setToolTip(f"{c.original} \u2192 {c.fixed}")
+            sel.cursor = QTextCursor(pane.document())
+            sel.cursor.setPosition(c.start)
+            sel.cursor.setPosition(c.end, QTextCursor.MoveMode.KeepAnchor)
+            sels.append(sel)
+        pane.setExtraSelections(sels)
+
+    def _clear_highlights(self, pane: QPlainTextEdit) -> None:
+        pane.setExtraSelections([])
+
+    def _report(self, changes: list[correction.Change]) -> None:
+        accents = sum(1 for c in changes if c.kind == "accent")
+        typos = len(changes) - accents
+        bits = []
+        if accents:
+            bits.append(self.tr("{n} accent(s)").format(n=accents))
+        if typos:
+            bits.append(self.tr("{n} typo(s)").format(n=typos))
+        base = self._engine_status or self.tr("Ready")
+        self.statusBar().showMessage(
+            base + "  \u00b7  \u2713 " + ", ".join(bits))
 
     @Slot()
     def _dispatch(self) -> None:
@@ -190,12 +281,24 @@ class MainWindow(QMainWindow):
     def _on_result(self, job_id: int, text: str, engine: str) -> None:
         if job_id != self._latest:
             return
-        self.out_text.setPlainText(text)
         names = {"google": "Google", "mymemory": "MyMemory",
                  "offline": self.tr("offline model")}
-        self.statusBar().showMessage(
-            self.tr("Translated with {engine}").format(
-                engine=names.get(engine, engine)))
+        self._engine_status = self.tr("Translated with {engine}").format(
+            engine=names.get(engine, engine))
+        out, changes = text, []
+        if self.fix_btn.isChecked():
+            res = correction.correct(text, self.tgt_combo.currentData())
+            if res.changes:
+                out, changes = res.text, res.changes
+        self.out_text.setPlainText(out)
+        if changes:
+            self._highlight(self.out_text, changes)
+        else:
+            self._clear_highlights(self.out_text)
+        if changes:
+            self._report(changes)
+        else:
+            self.statusBar().showMessage(self._engine_status)
         self._refresh_panel()
 
     @Slot(int, str)
@@ -262,6 +365,7 @@ class MainWindow(QMainWindow):
             self.saveGeometry()).decode())
         settings.set_str("source", self.src_combo.currentData())
         settings.set_str("target", self.tgt_combo.currentData())
+        settings.set_bool("fix_accents", self.fix_btn.isChecked())
         self._thread.quit()
         self._thread.wait(2000)
         super().closeEvent(event)

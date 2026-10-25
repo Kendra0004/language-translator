@@ -3,6 +3,10 @@ reading approximation, audio playback)."""
 from __future__ import annotations
 
 import logging
+import os
+import shutil
+import subprocess
+import sys
 import threading
 
 from PySide6.QtCore import QObject, Qt, QUrl, Signal
@@ -20,14 +24,12 @@ log = logging.getLogger(__name__)
 
 class _TTSWorker(QObject):
     """Fetches mp3 files off the UI thread."""
-    ready = Signal(str, str, float)  # text, lang, path-or-empty
+    ready = Signal(str, str, str)  # text, lang, path ('' = failed)
 
     def request(self, text: str, lang: str, speed: float) -> None:
         def run() -> None:
             path = tts.fetch(text, lang) or ""
-            self.ready.emit(text, lang, path if path else "")
-            if path:
-                pass
+            self.ready.emit(text, lang, path)
         threading.Thread(target=run, daemon=True).start()
 
 
@@ -38,6 +40,7 @@ class PronunciationPanel(QWidget):
         self._speed = 1.0
         self._player: QMediaPlayer | None = None
         self._audio: QAudioOutput | None = None
+        self._current_path: str = ""
 
         self._worker = _TTSWorker()
         self._worker.ready.connect(self._on_fetched,
@@ -216,20 +219,63 @@ class PronunciationPanel(QWidget):
         if text:
             self._worker.request(text, self._analysis.lang, self._speed)
 
+    def _ensure_player(self) -> QMediaPlayer:
+        if self._player is None:
+            self._audio = QAudioOutput(self)
+            self._player = QMediaPlayer(self)
+            self._player.setAudioOutput(self._audio)
+            self._player.errorOccurred.connect(self._on_player_error)
+        return self._player
+
     def _on_fetched(self, text: str, lang: str, path: str) -> None:
         if not path:
             self.empty_label.setText(
                 self.tr("Audio unavailable (offline?) - reading still works."))
             self.empty_label.show()
             return
+        self.empty_label.hide()
+        self._current_path = path
+        # Qt's FFmpeg audio backend segfaults on WSLg (no PipeWire config),
+        # so on Linux prefer the system player; Windows uses Qt first.
+        if not sys.platform.startswith("win") and self._play_external(
+                path, self._speed):
+            return
         try:
-            if self._player is None:
-                self._audio = QAudioOutput(self)
-                self._player = QMediaPlayer(self)
-                self._player.setAudioOutput(self._audio)
-            self._player.setSource(QUrl.fromLocalFile(path))
-            self._player.setPlaybackRate(self._speed)
+            player = self._ensure_player()
+            player.setSource(QUrl.fromLocalFile(path))
+            player.setPlaybackRate(self._speed)
             self._audio.setVolume(0.9)
-            self._player.play()
+            player.play()
         except Exception:  # noqa: BLE001 - audio is optional sugar
-            log.warning("audio playback failed", exc_info=True)
+            log.warning("qt playback failed", exc_info=True)
+            if not self._play_external(path, self._speed):
+                self.empty_label.setText(
+                    self.tr("Audio unavailable here - reading still works."))
+                self.empty_label.show()
+
+    def _on_player_error(self, error, message: str) -> None:
+        """Qt has no usable audio device - try the OS player instead."""
+        if not self._play_external(self._current_path or "", self._speed):
+            self.empty_label.setText(
+                self.tr("Audio unavailable here ({msg}). "
+                        "Reading still works.").format(msg=message))
+            self.empty_label.show()
+
+    def _play_external(self, path: str, speed: float = 1.0) -> bool:
+        if not path:
+            return False
+        try:
+            if sys.platform.startswith("win"):
+                os.startfile(path)  # type: ignore[attr-defined]
+                return True
+            ffplay = shutil.which("ffplay")
+            if ffplay:
+                cmd = [ffplay, "-nodisp", "-autoexit", "-loglevel", "quiet"]
+                if abs(speed - 1.0) > 0.01:
+                    cmd += ["-af", f"atempo={speed:g}"]
+                cmd.append(path)
+                subprocess.Popen(cmd)
+                return True
+        except Exception:  # noqa: BLE001
+            log.warning("external playback failed", exc_info=True)
+        return False
