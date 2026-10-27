@@ -397,3 +397,19 @@ def test_linux_build_script_exists_and_is_executable():
     path = os.path.join(root, "build.sh")
     assert os.path.isfile(path), "build.sh is missing"
     assert os.access(path, os.X_OK), "build.sh must be executable"
+
+
+def test_pyinstaller_entry_bootstraps_package_main():
+    """run.py must import app.main as a package (relative imports break
+    when PyInstaller executes app/main.py directly - regression guard."""
+    import importlib.util
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    path = os.path.join(root, "run.py")
+    assert os.path.isfile(path), "run.py entry point is missing"
+    spec = importlib.util.spec_from_file_location("_lt_run_check", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)          # must not raise on import
+    assert callable(mod.main)
+    spec_file = os.path.join(root, "translator.spec")
+    with open(spec_file, encoding="utf-8") as fh:
+        assert '["run.py"]' in fh.read(), "spec must use run.py entry"

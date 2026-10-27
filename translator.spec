@@ -25,7 +25,7 @@ excludes = [
 ]
 
 a = Analysis(
-    ["app/main.py"],
+    ["run.py"],
     pathex=[],
     binaries=[],
     datas=datas,

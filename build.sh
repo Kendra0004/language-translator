@@ -60,7 +60,9 @@ BIN=dist/LanguageTranslator/LanguageTranslator
 if [ -x "$BIN" ]; then
     echo
     echo "BUILD OK -> $BIN"
-    [ "$ONEDIR" -eq 0 ] && echo "(onefile variant: dist/LanguageTranslator)"
+    if [ "$ONEDIR" -eq 0 ]; then
+        echo "(onefile variant: dist/LanguageTranslator)"
+    fi
 else
     echo "Build finished but no binary found - check the log above." >&2
     exit 1
