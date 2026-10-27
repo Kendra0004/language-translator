@@ -58,7 +58,7 @@ class TranslateWorker(QObject):
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle(self.tr("Limited Translator - FR / EN and more"))
+        self.setWindowTitle(self.tr("Language Translator - FR / EN and more"))
         self.resize(1120, 680)
         self._job = 0
         self._latest = 0

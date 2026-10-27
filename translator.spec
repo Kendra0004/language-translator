@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec: produces dist/LimitedTranslator/LimitedTranslator.exe"""
+"""PyInstaller spec: produces dist/LanguageTranslator/LanguageTranslator.exe"""
 import sys
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
@@ -44,7 +44,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="LimitedTranslator",
+    name="LanguageTranslator",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -63,5 +63,5 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=False,
-    name="LimitedTranslator",
+    name="LanguageTranslator",
 )

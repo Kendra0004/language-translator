@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  One-command Windows build: produces dist\LimitedTranslator\LimitedTranslator.exe
+  One-command Windows build: produces dist\LanguageTranslator\LanguageTranslator.exe
 
 .PARAMETER OneFile
   Single .exe instead of a folder (takes a few seconds to unpack on start).
@@ -59,13 +59,13 @@ if ($OneFile) {
     & $pyi translator.spec --noconfirm
 }
 
-if (Test-Path "dist\LimitedTranslator\LimitedTranslator.exe") {
+if (Test-Path "dist\LanguageTranslator\LanguageTranslator.exe") {
     Write-Host ""
-    Write-Host "BUILD OK -> dist\LimitedTranslator\LimitedTranslator.exe" -ForegroundColor Green
-    Write-Host "(onefile variant: dist\LimitedTranslator.exe)" -ForegroundColor DarkGray
-} elseif (Test-Path "dist\LimitedTranslator.exe") {
+    Write-Host "BUILD OK -> dist\LanguageTranslator\LanguageTranslator.exe" -ForegroundColor Green
+    Write-Host "(onefile variant: dist\LanguageTranslator.exe)" -ForegroundColor DarkGray
+} elseif (Test-Path "dist\LanguageTranslator.exe") {
     Write-Host ""
-    Write-Host "BUILD OK -> dist\LimitedTranslator.exe" -ForegroundColor Green
+    Write-Host "BUILD OK -> dist\LanguageTranslator.exe" -ForegroundColor Green
 } else {
     Write-Error "Build finished but no exe found - check the log above."
     exit 1

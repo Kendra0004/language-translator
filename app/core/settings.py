@@ -1,9 +1,39 @@
-"""Persistent app settings (window geometry, language pair, voice speed)."""
+"""Persistent app settings (window geometry, language pair, theme...).
+
+App id was renamed from ``limited-translator`` to ``language-translator``
+along with the GitHub repo; prefs are migrated once so nothing is lost.
+"""
 from __future__ import annotations
+
+import os
 
 from PySide6.QtCore import QSettings
 
-_settings = QSettings("Kendra0004", "limited-translator")
+_ORG = "Kendra0004"
+_APP = "language-translator"
+_LEGACY_APP = "limited-translator"
+_MIGRATED_KEY = "_migrated_from_limited_translator"
+
+_settings = QSettings(_ORG, _APP)
+
+
+def _migrate_legacy_settings() -> None:
+    """Copy prefs from the pre-rename settings file, exactly once."""
+    try:
+        if _MIGRATED_KEY in _settings.allKeys():
+            return
+        legacy = QSettings(_ORG, _LEGACY_APP)
+        if os.path.exists(legacy.fileName()):
+            for key in legacy.allKeys():
+                if key != _MIGRATED_KEY:
+                    _settings.setValue(key, legacy.value(key))
+        _settings.setValue(_MIGRATED_KEY, True)
+        _settings.sync()
+    except Exception:  # noqa: BLE001 - losing prefs must not break startup
+        pass
+
+
+_migrate_legacy_settings()
 
 
 def get_str(key: str, default: str = "") -> str:

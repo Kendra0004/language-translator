@@ -20,7 +20,7 @@ MAX_CHARS = 190  # endpoint limit is ~200 per request
 
 def _cache_dir() -> str:
     base = os.environ.get("LOCALAPPDATA") or os.environ.get("XDG_CACHE_HOME") \
-        or os.path.join(tempfile.gettempdir(), "limited-translator")
+        or os.path.join(tempfile.gettempdir(), "language-translator")
     path = os.path.join(base, "tts-cache")
     os.makedirs(path, exist_ok=True)
     return path

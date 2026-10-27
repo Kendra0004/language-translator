@@ -17,7 +17,7 @@ def main() -> int:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     app = QApplication(sys.argv)
-    app.setApplicationName("Limited Translator")
+    app.setApplicationName("Language Translator")
     app.setOrganizationName("Kendra0004")
     # theme is applied before the first widget exists: no light->dark flash
     apply_theme(app, settings.get_bool("dark_mode", False))

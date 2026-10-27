@@ -1,4 +1,4 @@
-# Limited Translator
+# Language Translator
 
 A desktop translator for **English ⇄ French, Spanish, German, Italian and
 Portuguese** with a killer extra: a **Pronunciation side panel** that shows
@@ -57,7 +57,7 @@ Tests: `.venv/bin/python -m pytest tests -q`
 On Windows (PowerShell) inside this folder:
 
 ```powershell
-.\build.ps1              # -> dist\LimitedTranslator\LimitedTranslator.exe
+.\build.ps1              # -> dist\LanguageTranslator\LanguageTranslator.exe
 .\build.ps1 -OneFile     # single-file variant (slower to start)
 .\build.ps1 -Offline     # also bundle the offline engine (~1 GB extra)
 ```
@@ -96,4 +96,4 @@ build.ps1                  one-command Windows build
 - Pronunciation is rule-based on top of [epitran](https://github.com/appien/epitran)
   tables, so it is fast, offline and works the moment you type.
 - Translation and audio need internet; everything else works offline.
-- Pushed to <https://github.com/Kendra0004/limited-translator>.
+- Pushed to <https://github.com/Kendra0004/language-translator>.
