@@ -116,4 +116,3 @@ build.sh                   one-command Linux build
 - Pronunciation is rule-based on top of [epitran](https://github.com/appien/epitran)
   tables, so it is fast, offline and works the moment you type.
 - Translation and audio need internet; everything else works offline.
-- Pushed to <https://github.com/Kendra0004/language-translator>.
