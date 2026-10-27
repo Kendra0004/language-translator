@@ -11,7 +11,13 @@ including 0.6× / 0.8× slow motion for learners.
 
 ## Features
 
-- **Translate as you type** (400 ms debounce, `Ctrl+Enter` to force)
+- **Translate on demand** — a single **Translate ▶** button is the only way
+  to start a translation (no requests are fired while you type, so no rate
+  limits are wasted); the button disables and shows `Translating…` while a
+  job runs, `Ctrl+Enter`/`Enter` do nothing
+- **Dark mode** — 🌙 toolbar toggle switches the whole app (panes, toolbar,
+  pronunciation cards, scrollbars, selection colors) between light and dark;
+  the choice is saved and applied before the first frame, no flash
 - **Manual language pickers** + one-click swap (swaps the texts too)
 - **Pronunciation panel** (right dock) for every non-English language:
   - big readable approximation: `bon-ZHOOR a too kaw-mahnt …`
@@ -69,7 +75,8 @@ is present — so the default build stays lean.
 
 ```
 app/
-  main.py                  entry point + stylesheet
+  main.py                  entry point (applies persisted theme)
+  theme.py                 light/dark stylesheets + palettes
   ui/main_window.py        panes, language pickers, threading, status bar
   ui/pronunciation_panel.py the dock: reading, IPA, cards, audio
   core/languages.py        language registry (add a language in one place)

@@ -3,51 +3,59 @@ from __future__ import annotations
 
 import base64
 import logging
+import threading
 
-from PySide6.QtCore import QObject, Qt, QThread, QTimer, Signal, Slot
-from PySide6.QtGui import QAction, QColor, QKeySequence, QTextCharFormat
-from PySide6.QtGui import QTextCursor
+from PySide6.QtCore import QObject, Qt, Signal, Slot
+from PySide6.QtGui import QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
-    QComboBox, QDockWidget, QGridLayout, QLabel, QLineEdit, QPlainTextEdit,
-    QSplitter, QTextEdit, QToolButton, QVBoxLayout, QWidget, QMainWindow,
+    QApplication, QComboBox, QDockWidget, QGridLayout, QLabel, QLineEdit,
+    QMainWindow, QPlainTextEdit, QPushButton, QSplitter, QTextEdit,
+    QToolButton, QVBoxLayout, QWidget,
 )
 
 from ..core import correction, languages, settings, translator
 from ..core.pronunciation import analyze
+from ..theme import CORRECTION_UNDERLINE_DARK, CORRECTION_UNDERLINE_LIGHT
+from ..theme import apply_theme
 from .pronunciation_panel import PronunciationPanel
 
 log = logging.getLogger(__name__)
 
-DEBOUNCE_MS = 400
-
 
 class TranslateWorker(QObject):
+    """Runs translations on daemon threads.
+
+    Deliberately not a QThread: closing the window while a request is in
+    flight used to abort the process (QThread destroyed while running).
+    Daemon threads are simply abandoned at interpreter exit, and the
+    `closed` flag stops them from touching dead widgets on the way out.
+    """
+
     result = Signal(int, str, str)     # job id, translated text, engine
     failed = Signal(int, str)          # job id, error
-    busy = Signal(bool)
 
     def __init__(self) -> None:
         super().__init__()
-        self._active: int | None = None
+        self.closed = False
 
-    @Slot(int, str, str, str)
-    def run(self, job_id: int, text: str, src: str, tgt: str) -> None:
-        self._active = job_id
-        self.busy.emit(True)
+    def start(self, job_id: int, text: str, src: str, tgt: str) -> None:
+        threading.Thread(target=self._run, daemon=True,
+                         name=f"translate-{job_id}",
+                         args=(job_id, text, src, tgt)).start()
+
+    def _run(self, job_id: int, text: str, src: str, tgt: str) -> None:
+        if self.closed:
+            return
         try:
             res = translator.translate(text, src, tgt, allow_offline=True)
-            if self._active == job_id:
+            if not self.closed:
                 self.result.emit(job_id, res.text, res.engine)
         except Exception as exc:  # noqa: BLE001 - surfaced in the status bar
-            if self._active == job_id:
+            if not self.closed:
                 self.failed.emit(job_id, str(exc))
-        finally:
-            self.busy.emit(False)
 
 
 class MainWindow(QMainWindow):
-    submitted = Signal(int, str, str, str)
-
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(self.tr("Limited Translator - FR / EN and more"))
@@ -56,18 +64,16 @@ class MainWindow(QMainWindow):
         self._latest = 0
         self._correcting = False
         self._engine_status = ""
+        self._src_changes: list[correction.Change] = []
+        self._out_changes: list[correction.Change] = []
 
-        # ---------------------------------------------------------- thread
-        self._thread = QThread(self)
+        # -------------------------------------------------- translate worker
+        # lives in the GUI thread; jobs run on daemon threads and emit back
+        # through explicit queued connections (see TranslateWorker docstring)
         self._worker = TranslateWorker()
-        self._worker.moveToThread(self._thread)
-        # explicit QueuedConnection: PySide6 would otherwise run the slot in
-        # the emitting thread and touch GUI objects from the worker
         queued = Qt.ConnectionType.QueuedConnection
-        self.submitted.connect(self._worker.run, queued)
         self._worker.result.connect(self._on_result, queued)
         self._worker.failed.connect(self._on_failed, queued)
-        self._thread.start()
 
         # ---------------------------------------------------------- toolbar
         bar = QWidget()
@@ -93,9 +99,9 @@ class MainWindow(QMainWindow):
         self.swap_btn.clicked.connect(self._swap)
 
         self.find_edit = QLineEdit()
-        self.find_edit.setPlaceholderText(self.tr("Find in text..."))
+        self.find_edit.setPlaceholderText(self.tr("Find..."))
         self.find_edit.setClearButtonEnabled(True)
-        self.find_edit.setMaximumWidth(200)
+        self.find_edit.setMaximumWidth(130)
         self.find_edit.textChanged.connect(self._find)
 
         self.fix_btn = QToolButton()
@@ -107,23 +113,41 @@ class MainWindow(QMainWindow):
         self.fix_btn.setChecked(settings.get_bool("fix_accents", True))
         self.fix_btn.clicked.connect(self._on_fix_toggled)
 
+        self.translate_btn = QPushButton(self.tr("Translate \u25b6"))
+        self.translate_btn.setToolTip(self.tr(
+            "Translate the text (this is the only way to start a\n"
+            "translation - typing never fires a request)"))
+        self.translate_btn.clicked.connect(self._dispatch)
+
+        self.dark_btn = QToolButton()
+        self.dark_btn.setCheckable(True)
+        self.dark_btn.setToolTip(self.tr("Dark mode"))
+        self.dark_btn.setChecked(settings.get_bool("dark_mode", False))
+        self.dark_btn.setText("\u2600\ufe0f" if self.dark_btn.isChecked()
+                              else "\U0001f319")
+        self.dark_btn.toggled.connect(self._on_dark_toggled)
+
         self.src_label = QLabel(self.tr("Type here"))
         self.tgt_label = QLabel(self.tr("Translation"))
 
         grid.addWidget(self.src_label, 0, 0)
-        grid.addWidget(self.tgt_label, 0, 3)
+        grid.addWidget(self.tgt_label, 0, 4, 1, 4,
+                       Qt.AlignmentFlag.AlignRight)
         grid.addWidget(self.src_combo, 1, 0)
         grid.addWidget(self.swap_btn, 1, 1)
         grid.addWidget(self.tgt_combo, 1, 2)
-        grid.addWidget(self.fix_btn, 1, 3, alignment=Qt.AlignmentFlag.AlignRight)
-        grid.addWidget(self.find_edit, 1, 4, alignment=Qt.AlignmentFlag.AlignRight)
+        grid.addWidget(self.translate_btn, 1, 4)
+        grid.addWidget(self.fix_btn, 1, 5, alignment=Qt.AlignmentFlag.AlignRight)
+        grid.addWidget(self.dark_btn, 1, 6)
+        grid.addWidget(self.find_edit, 1, 7, alignment=Qt.AlignmentFlag.AlignRight)
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(3, 1)
+        grid.setColumnStretch(7, 1)
 
         # ------------------------------------------------------------- panes
         self.src_text = QPlainTextEdit()
         self.src_text.setPlaceholderText(
-            self.tr("Write or paste your text... translation appears as you type"))
+            self.tr("Write or paste your text... then click Translate"))
         self.out_text = QPlainTextEdit()
         self.out_text.setReadOnly(True)
         self.out_text.setPlaceholderText(self.tr("Translation"))
@@ -153,18 +177,10 @@ class MainWindow(QMainWindow):
         self._dock = dock
 
         # ---------------------------------------------------------- signals
-        self._debounce = QTimer(self)
-        self._debounce.setSingleShot(True)
-        self._debounce.setInterval(DEBOUNCE_MS)
-        self._debounce.timeout.connect(self._dispatch)
+        # NOTE: no auto-translate - translation starts only via the button
         self.src_text.textChanged.connect(self._on_source_changed)
         self.src_combo.currentIndexChanged.connect(self._on_lang_changed)
         self.tgt_combo.currentIndexChanged.connect(self._on_lang_changed)
-
-        force = QAction(self)
-        force.setShortcut(QKeySequence("Ctrl+Return"))
-        force.triggered.connect(self._dispatch)
-        self.addAction(force)
 
         geo = settings.get_str("geometry")
         if geo:
@@ -178,16 +194,15 @@ class MainWindow(QMainWindow):
     # ---------------------------------------------------------- translation
     @Slot()
     def _on_source_changed(self) -> None:
+        """Typing only updates correction + pronunciation - never requests."""
         if not self._correcting and self.fix_btn.isChecked():
             self._correct_source()
-        self._debounce.start()
         self._refresh_panel()
 
     @Slot()
     def _on_lang_changed(self) -> None:
         if self.fix_btn.isChecked():
             self._correct_source()
-        self._debounce.start()
         self._refresh_panel()
 
     # ---------------------------------------------------------- correction
@@ -225,7 +240,6 @@ class MainWindow(QMainWindow):
         settings.set_bool("fix_accents", checked)
         if checked:
             self._correct_source()
-            self._debounce.start()
             self._refresh_panel()
         else:
             self._clear_highlights(self.src_text)
@@ -236,7 +250,9 @@ class MainWindow(QMainWindow):
     def _highlight(self, pane: QPlainTextEdit,
                    changes: list[correction.Change]) -> None:
         fmt = QTextCharFormat()
-        fmt.setUnderlineColor(QColor(255, 165, 0))
+        fmt.setUnderlineColor(
+            CORRECTION_UNDERLINE_DARK if self.dark_btn.isChecked()
+            else CORRECTION_UNDERLINE_LIGHT)
         fmt.setUnderlineStyle(QTextCharFormat.UnderlineStyle.SingleUnderline)
         sels = []
         for c in changes:
@@ -248,9 +264,17 @@ class MainWindow(QMainWindow):
             sel.cursor.setPosition(c.end, QTextCursor.MoveMode.KeepAnchor)
             sels.append(sel)
         pane.setExtraSelections(sels)
+        if pane is self.src_text:
+            self._src_changes = changes
+        else:
+            self._out_changes = changes
 
     def _clear_highlights(self, pane: QPlainTextEdit) -> None:
         pane.setExtraSelections([])
+        if pane is self.src_text:
+            self._src_changes = []
+        else:
+            self._out_changes = []
 
     def _report(self, changes: list[correction.Change]) -> None:
         accents = sum(1 for c in changes if c.kind == "accent")
@@ -272,15 +296,22 @@ class MainWindow(QMainWindow):
             return
         self._job += 1
         self._latest = self._job
-        self.submitted.emit(self._job, text,
-                            self.src_combo.currentData(),
-                            self.tgt_combo.currentData())
+        self.translate_btn.setEnabled(False)
+        self.translate_btn.setText(self.tr("Translating\u2026"))
+        self._worker.start(self._job, text,
+                           self.src_combo.currentData(),
+                           self.tgt_combo.currentData())
         self.statusBar().showMessage(self.tr("Translating..."))
+
+    def _translate_done(self) -> None:
+        self.translate_btn.setEnabled(True)
+        self.translate_btn.setText(self.tr("Translate \u25b6"))
 
     @Slot(int, str, str)
     def _on_result(self, job_id: int, text: str, engine: str) -> None:
         if job_id != self._latest:
-            return
+            return  # stale result from an older click: never overwrite
+        self._translate_done()
         names = {"google": "Google", "mymemory": "MyMemory",
                  "offline": self.tr("offline model")}
         self._engine_status = self.tr("Translated with {engine}").format(
@@ -305,6 +336,7 @@ class MainWindow(QMainWindow):
     def _on_failed(self, job_id: int, message: str) -> None:
         if job_id != self._latest:
             return
+        self._translate_done()
         self.statusBar().showMessage(self.tr("Translation failed: {m}").format(
             m=message[:160]), 8000)
 
@@ -322,7 +354,20 @@ class MainWindow(QMainWindow):
         if translated:
             self.src_text.setPlainText(translated)
             self.out_text.setPlainText(source)
-        self._debounce.start()
+        self._refresh_panel()
+
+    # ------------------------------------------------------------ dark mode
+    @Slot(bool)
+    def _on_dark_toggled(self, dark: bool) -> None:
+        settings.set_bool("dark_mode", dark)
+        self.dark_btn.setText("\u2600\ufe0f" if dark else "\U0001f319")
+        if QApplication.instance() is not None:
+            apply_theme(QApplication.instance(), dark)
+        # re-paint corrections so the underline color matches the theme
+        if self._src_changes:
+            self._highlight(self.src_text, self._src_changes)
+        if self._out_changes:
+            self._highlight(self.out_text, self._out_changes)
         self._refresh_panel()
 
     # ------------------------------------------------------------- panel
@@ -366,6 +411,8 @@ class MainWindow(QMainWindow):
         settings.set_str("source", self.src_combo.currentData())
         settings.set_str("target", self.tgt_combo.currentData())
         settings.set_bool("fix_accents", self.fix_btn.isChecked())
-        self._thread.quit()
-        self._thread.wait(2000)
+        settings.set_bool("dark_mode", self.dark_btn.isChecked())
+        # stop in-flight translation threads from touching dead widgets;
+        # daemon threads are abandoned and die with the process (no abort)
+        self._worker.closed = True
         super().closeEvent(event)
