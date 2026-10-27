@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 
 from ..core import languages, tts
 from ..core.pronunciation import Analysis, WordPron
+from ..theme import px
 
 log = logging.getLogger(__name__)
 
@@ -47,8 +48,8 @@ class PronunciationPanel(QWidget):
                                    Qt.ConnectionType.QueuedConnection)
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(12, 10, 12, 10)
-        root.setSpacing(8)
+        root.setContentsMargins(px(12), px(10), px(12), px(10))
+        root.setSpacing(px(8))
 
         head = QHBoxLayout()
         self.lang_chip = QLabel("")
@@ -107,7 +108,7 @@ class PronunciationPanel(QWidget):
         self.cards_host = QWidget()
         self.cards = QVBoxLayout(self.cards_host)
         self.cards.setContentsMargins(0, 0, 0, 0)
-        self.cards.setSpacing(6)
+        self.cards.setSpacing(px(6))
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -169,8 +170,8 @@ class PronunciationPanel(QWidget):
         frame = QFrame()
         frame.setObjectName("card")
         row = QHBoxLayout(frame)
-        row.setContentsMargins(10, 6, 10, 6)
-        row.setSpacing(10)
+        row.setContentsMargins(px(10), px(6), px(10), px(6))
+        row.setSpacing(px(10))
 
         spoken = "-".join(word.respell) or word.core
         stressed = spoken

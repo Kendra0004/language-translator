@@ -30,16 +30,22 @@ including 0.6× / 0.8× slow motion for learners.
   1. Google's public endpoint
   2. MyMemory
   3. *optional* Argostranslate offline model (auto-downloaded, cached)
-- **Auto word correction** (`Fix accents ✔` toggle, on by default):
-  - restores missing accents/cedillas: `tres → très`, `cancion → canción`,
-    `citta → città`, `coracao → coração`, `uber → über`
+- **Automatic word correction** (always on — no button to press):
+  - restores missing accents/cedillas as you type and again when you
+    translate: `tres → très`, `cancion → canción`, `citta → città`,
+    `coracao → coração`, `uber → über`
   - fixes simple typos: `bonjur → bonjour`
-  - applied to **both panes** (typed text and translation output), every
-    changed word gets an amber underline with the original on hover, and the
-    status bar reports `✓ 2 accent(s)`
+  - applied to **both panes** (typed text and translation output — the
+    engine always receives clean text, and accents it drops are restored),
+    every changed word gets an amber underline with the original on hover,
+    and the status bar reports `✓ 2 accent(s)`
   - ambiguity-safe: real unaccented words (`ou`, `la`, `a`, `cuando`, `si`)
     are never "corrected" — a change only happens when the accented spelling
     is far more frequent; the word you are currently typing is never touched
+- **Auto-sizing UI** — fonts, controls and spacing scale with the screen:
+  OS display scaling (125%/150%) is honoured, and small-resolution screens
+  (≤ 1366×768) automatically get the medium tier (~20% larger); the window
+  never opens larger than the display; `LT_UI_SCALE=1.5` forces a size
 - Find-in-text box, persisted window layout & language pair
 
 ## Running from source
@@ -52,9 +58,9 @@ python3 -m venv .venv
 
 Tests: `.venv/bin/python -m pytest tests -q`
 
-## Building the Windows .exe
+## Building
 
-On Windows (PowerShell) inside this folder:
+### Windows (PowerShell)
 
 ```powershell
 .\build.ps1              # -> dist\LanguageTranslator\LanguageTranslator.exe
@@ -62,8 +68,16 @@ On Windows (PowerShell) inside this folder:
 .\build.ps1 -Offline     # also bundle the offline engine (~1 GB extra)
 ```
 
-`build.ps1` creates the venv, installs pinned dependencies, runs the tests
-and invokes PyInstaller — nothing else to do.
+### Linux (bash)
+
+```bash
+./build.sh               # -> dist/LanguageTranslator/LanguageTranslator
+./build.sh --onefile     # single-file variant
+./build.sh --offline     # also bundle the offline engine (~1 GB extra)
+```
+
+Both scripts create the venv, install pinned dependencies, run the tests
+and invoke PyInstaller — nothing else to do.
 
 ### Why offline is a build flag
 The offline engine (Argostranslate) depends on stanza/torch/spacy, which adds
@@ -75,8 +89,8 @@ is present — so the default build stays lean.
 
 ```
 app/
-  main.py                  entry point (applies persisted theme)
-  theme.py                 light/dark stylesheets + palettes
+  main.py                  entry point (scale detection, screen fitting)
+  theme.py                 scale-aware light/dark stylesheets + palettes
   ui/main_window.py        panes, language pickers, threading, status bar
   ui/pronunciation_panel.py the dock: reading, IPA, cards, audio
   core/languages.py        language registry (add a language in one place)
@@ -87,8 +101,9 @@ app/
   core/tts.py              native-voice mp3 fetch + cache
   core/settings.py         persisted preferences
 tests/                     pytest coverage of the language engine
-translator.spec            PyInstaller configuration
+translator.spec            PyInstaller configuration (Windows + Linux)
 build.ps1                  one-command Windows build
+build.sh                   one-command Linux build
 ```
 
 ## Notes

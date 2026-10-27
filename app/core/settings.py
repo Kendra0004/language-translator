@@ -35,6 +35,15 @@ def _migrate_legacy_settings() -> None:
 
 _migrate_legacy_settings()
 
+# The Fix accents toggle was removed - correction is unconditional now.
+# Drop the obsolete key (leftover from the toggle era) if present.
+try:
+    if _settings.contains("fix_accents"):
+        _settings.remove("fix_accents")
+        _settings.sync()
+except Exception:  # noqa: BLE001 - stale key must not break startup
+    pass
+
 
 def get_str(key: str, default: str = "") -> str:
     return str(_settings.value(key, default))

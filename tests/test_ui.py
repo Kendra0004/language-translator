@@ -36,7 +36,6 @@ def window(qapp, isolated_settings):
     from app.ui.main_window import MainWindow
     apply_theme(qapp, False)
     w = MainWindow()
-    w.fix_btn.setChecked(False)  # correction is covered in test_correction
     yield w
     w.close()
     w.deleteLater()
@@ -193,7 +192,6 @@ def test_close_during_inflight_translation_is_clean(qapp, isolated_settings,
     monkeypatch.setattr("app.core.translator.translate", slow_translate)
     from app.ui.main_window import MainWindow
     w = MainWindow()
-    w.fix_btn.setChecked(False)
     w.src_text.setPlainText("hello")
     w.translate_btn.click()          # job now in flight
     w.close()                        # user closes immediately after
@@ -201,3 +199,107 @@ def test_close_during_inflight_translation_is_clean(qapp, isolated_settings,
     w.deleteLater()
     time.sleep(0.6)                  # let the daemon thread finish quietly
     qapp.processEvents()
+
+
+# --------------------------------------------------- always-on correction
+def test_fix_accents_toggle_is_gone(window):
+    """Correction has no button anymore - it is unconditional."""
+    assert not hasattr(window, "fix_btn")
+    assert not hasattr(window, "_on_fix_toggled")
+
+
+def test_dispatch_always_sends_corrected_text(window):
+    """Even if typing-time correction was skipped, Translate sends clean text."""
+    calls = _spy(window)
+    window.src_combo.setCurrentIndex(window.src_combo.findData("fr"))
+    window.src_text.blockSignals(True)          # pretend typing correction off
+    window.src_text.setPlainText("je suis tres content")
+    window.src_text.blockSignals(False)
+    window.translate_btn.click()
+    assert len(calls) == 1
+    assert calls[0][1] == "je suis très content"
+
+
+def test_output_is_always_corrected_and_highlighted(window, qapp):
+    calls = _spy(window)
+    window.src_combo.setCurrentIndex(window.src_combo.findData("fr"))
+    window.src_text.setPlainText("bonjour")
+    window.translate_btn.click()
+    window._worker.result.emit(calls[0][0], "hello, je suis tres content",
+                               "mymemory")
+    qapp.processEvents()
+    assert "très" in window.out_text.toPlainText()
+    assert window.out_text.extraSelections(), "amber underline expected"
+    assert window._out_changes
+    assert "\u2713" in window.statusBar().currentMessage(), \
+        "status bar must report what was fixed"
+
+
+def test_status_keeps_fix_report_when_output_needs_no_fix(window, qapp):
+    """Source-pane fixes stay reported even if the engine output is clean."""
+    calls = _spy(window)
+    window.src_combo.setCurrentIndex(window.src_combo.findData("fr"))
+    window.src_text.blockSignals(True)
+    window.src_text.setPlainText("tres bien")     # typing correction skipped
+    window.src_text.blockSignals(False)
+    window.translate_btn.click()                  # dispatch corrects it
+    assert calls[0][1] == "très bien"
+    window._worker.result.emit(calls[0][0], "very good", "google")
+    qapp.processEvents()
+    assert "\u2713" in window.statusBar().currentMessage()
+
+
+# ----------------------------------------------------------------- scaling
+def test_compute_scale_tiers():
+    from app.main import compute_scale
+    assert compute_scale(96, 1920, 1080) == 1.0        # normal desktop
+    assert compute_scale(120, 1920, 1080) == 1.25      # OS at 125%
+    assert compute_scale(144, 2560, 1440) == 1.5       # OS at 150%
+    assert compute_scale(96, 1366, 768) == 1.2         # small -> medium tier
+    assert compute_scale(144, 1366, 768) == 1.5        # scaling wins if bigger
+    assert compute_scale(96, 1920, 1080, "1.3") == 1.3  # env override
+    assert compute_scale(96, 1920, 1080, "9") == 3.0    # clamped
+    assert compute_scale(96, 1920, 1080, "bogus") == 1.0  # bad value ignored
+
+
+def test_theme_scale_grows_styles():
+    from app import theme
+    try:
+        theme.set_scale(1.25)
+        assert theme.px(4) == 5
+        assert theme.px(14) == 18
+        style = theme.build_style(True, 1.25)
+        assert "font-size: 18px" in style      # 14 * 1.25 base font
+        assert "font-size: 19px" in style      # 15 * 1.25 text panes
+        assert "1e1f26" in style               # still dark
+    finally:
+        theme.set_scale(1.0)
+    assert theme.px(14) == 14
+    assert theme.build_style(False, 1.0) == theme.LIGHT_STYLE
+    assert theme.build_style(True, 1.0) == theme.DARK_STYLE
+
+
+def test_fit_to_screen_clamps_oversized_window(qapp, isolated_settings):
+    from PySide6.QtCore import QRect
+    from app.main import fit_to_screen
+    from app.ui.main_window import MainWindow
+    w = MainWindow()
+    w.setGeometry(0, 0, 4000, 3000)           # saved on a bigger screen
+    avail = QRect(0, 0, 1366, 720)
+    assert fit_to_screen(w, avail) is True
+    g = w.geometry()
+    assert g.width() <= avail.width() and g.height() <= avail.height()
+    # a window that already fits is left completely alone
+    w.setGeometry(10, 10, 800, 600)
+    assert fit_to_screen(w, avail) is False
+    assert w.geometry().width() == 800
+    w.close()
+    w.deleteLater()
+
+
+# ---------------------------------------------------------------- packaging
+def test_linux_build_script_exists_and_is_executable():
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    path = os.path.join(root, "build.sh")
+    assert os.path.isfile(path), "build.sh is missing"
+    assert os.access(path, os.X_OK), "build.sh must be executable"

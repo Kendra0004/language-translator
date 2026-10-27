@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 from ..core import correction, languages, settings, translator
 from ..core.pronunciation import analyze
 from ..theme import CORRECTION_UNDERLINE_DARK, CORRECTION_UNDERLINE_LIGHT
-from ..theme import apply_theme
+from ..theme import apply_theme, px
 from .pronunciation_panel import PronunciationPanel
 
 log = logging.getLogger(__name__)
@@ -59,7 +59,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(self.tr("Language Translator - FR / EN and more"))
-        self.resize(1120, 680)
+        self.resize(px(1120), px(680))
         self._job = 0
         self._latest = 0
         self._correcting = False
@@ -78,8 +78,8 @@ class MainWindow(QMainWindow):
         # ---------------------------------------------------------- toolbar
         bar = QWidget()
         grid = QGridLayout(bar)
-        grid.setContentsMargins(4, 4, 4, 4)
-        grid.setSpacing(6)
+        grid.setContentsMargins(px(4), px(4), px(4), px(4))
+        grid.setSpacing(px(6))
 
         self.src_combo = QComboBox()
         self.tgt_combo = QComboBox()
@@ -101,17 +101,8 @@ class MainWindow(QMainWindow):
         self.find_edit = QLineEdit()
         self.find_edit.setPlaceholderText(self.tr("Find..."))
         self.find_edit.setClearButtonEnabled(True)
-        self.find_edit.setMaximumWidth(130)
+        self.find_edit.setMaximumWidth(px(130))
         self.find_edit.textChanged.connect(self._find)
-
-        self.fix_btn = QToolButton()
-        self.fix_btn.setCheckable(True)
-        self.fix_btn.setText(self.tr("Fix accents \u2714"))
-        self.fix_btn.setToolTip(self.tr(
-            "Auto-correct missing accents and simple typos\n"
-            "in both panes (amber underline shows changes)"))
-        self.fix_btn.setChecked(settings.get_bool("fix_accents", True))
-        self.fix_btn.clicked.connect(self._on_fix_toggled)
 
         self.translate_btn = QPushButton(self.tr("Translate \u25b6"))
         self.translate_btn.setToolTip(self.tr(
@@ -131,18 +122,17 @@ class MainWindow(QMainWindow):
         self.tgt_label = QLabel(self.tr("Translation"))
 
         grid.addWidget(self.src_label, 0, 0)
-        grid.addWidget(self.tgt_label, 0, 4, 1, 4,
+        grid.addWidget(self.tgt_label, 0, 2, 1, 4,
                        Qt.AlignmentFlag.AlignRight)
         grid.addWidget(self.src_combo, 1, 0)
         grid.addWidget(self.swap_btn, 1, 1)
         grid.addWidget(self.tgt_combo, 1, 2)
-        grid.addWidget(self.translate_btn, 1, 4)
-        grid.addWidget(self.fix_btn, 1, 5, alignment=Qt.AlignmentFlag.AlignRight)
-        grid.addWidget(self.dark_btn, 1, 6)
-        grid.addWidget(self.find_edit, 1, 7, alignment=Qt.AlignmentFlag.AlignRight)
+        grid.addWidget(self.translate_btn, 1, 3)
+        grid.addWidget(self.dark_btn, 1, 4)
+        grid.addWidget(self.find_edit, 1, 5, alignment=Qt.AlignmentFlag.AlignRight)
         grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(3, 1)
-        grid.setColumnStretch(7, 1)
+        grid.setColumnStretch(2, 1)
+        grid.setColumnStretch(5, 1)
 
         # ------------------------------------------------------------- panes
         self.src_text = QPlainTextEdit()
@@ -160,8 +150,8 @@ class MainWindow(QMainWindow):
 
         central = QWidget()
         layout = QVBoxLayout(central)
-        layout.setContentsMargins(6, 6, 6, 6)
-        layout.setSpacing(6)
+        layout.setContentsMargins(px(6), px(6), px(6), px(6))
+        layout.setSpacing(px(6))
         layout.addWidget(bar)
         layout.addWidget(splitter, 1)
         self.setCentralWidget(central)
@@ -194,26 +184,32 @@ class MainWindow(QMainWindow):
     # ---------------------------------------------------------- translation
     @Slot()
     def _on_source_changed(self) -> None:
-        """Typing only updates correction + pronunciation - never requests."""
-        if not self._correcting and self.fix_btn.isChecked():
+        """Typing corrects + updates pronunciation - never requests."""
+        if not self._correcting:
             self._correct_source()
         self._refresh_panel()
 
     @Slot()
     def _on_lang_changed(self) -> None:
-        if self.fix_btn.isChecked():
+        if not self._correcting:
             self._correct_source()
         self._refresh_panel()
 
     # ---------------------------------------------------------- correction
-    def _correct_source(self) -> None:
-        """Auto-fix accents/typos in the pane the user types into."""
+    def _correct_source(self, force: bool = False) -> None:
+        """Auto-fix accents/typos in the pane the user types into.
+
+        Always on - no toggle. While typing, the word under the cursor is
+        left alone (never fight live input); `force=True` (used right
+        before dispatch) corrects everything, so the engine always
+        receives clean text.
+        """
         text = self.src_text.toPlainText()
         lang = self.src_combo.currentData()
         if not text.strip() or lang not in correction.LANGS:
             return
         pos = self.src_text.textCursor().position()
-        skip = correction.word_range_at(text, pos)  # never fight live typing
+        skip = None if force else correction.word_range_at(text, pos)
         res = correction.correct(text, lang, True, skip)
         if not res.changes:
             return
@@ -234,18 +230,6 @@ class MainWindow(QMainWindow):
         self._correcting = False
         self._highlight(self.src_text, res.changes)
         self._report(res.changes)
-
-    @Slot(bool)
-    def _on_fix_toggled(self, checked: bool) -> None:
-        settings.set_bool("fix_accents", checked)
-        if checked:
-            self._correct_source()
-            self._refresh_panel()
-        else:
-            self._clear_highlights(self.src_text)
-            self._clear_highlights(self.out_text)
-            self.statusBar().showMessage(
-                self._engine_status or self.tr("Ready"))
 
     def _highlight(self, pane: QPlainTextEdit,
                    changes: list[correction.Change]) -> None:
@@ -290,10 +274,14 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _dispatch(self) -> None:
+        # last-chance full correction: even if typing-time correction was
+        # skipped (word in flight), the engine always receives clean text
+        self._correct_source(force=True)
         text = self.src_text.toPlainText().strip()
         if not text:
             self.out_text.clear()
             return
+        self._refresh_panel()
         self._job += 1
         self._latest = self._job
         self.translate_btn.setEnabled(False)
@@ -316,18 +304,20 @@ class MainWindow(QMainWindow):
                  "offline": self.tr("offline model")}
         self._engine_status = self.tr("Translated with {engine}").format(
             engine=names.get(engine, engine))
-        out, changes = text, []
-        if self.fix_btn.isChecked():
-            res = correction.correct(text, self.tgt_combo.currentData())
-            if res.changes:
-                out, changes = res.text, res.changes
+        # output correction is always on: repair accents the engine dropped
+        res = correction.correct(text, self.tgt_combo.currentData())
+        out, changes = (res.text, res.changes) if res.changes else (text, [])
         self.out_text.setPlainText(out)
         if changes:
             self._highlight(self.out_text, changes)
         else:
             self._clear_highlights(self.out_text)
+        # keep the "what was fixed" report visible after translating:
+        # output fixes win, otherwise still report the source-pane fixes
         if changes:
             self._report(changes)
+        elif self._src_changes:
+            self._report(self._src_changes)
         else:
             self.statusBar().showMessage(self._engine_status)
         self._refresh_panel()
@@ -410,7 +400,6 @@ class MainWindow(QMainWindow):
             self.saveGeometry()).decode())
         settings.set_str("source", self.src_combo.currentData())
         settings.set_str("target", self.tgt_combo.currentData())
-        settings.set_bool("fix_accents", self.fix_btn.isChecked())
         settings.set_bool("dark_mode", self.dark_btn.isChecked())
         # stop in-flight translation threads from touching dead widgets;
         # daemon threads are abandoned and die with the process (no abort)
