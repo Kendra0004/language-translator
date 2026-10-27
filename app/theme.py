@@ -13,9 +13,11 @@ per screen.
 """
 from __future__ import annotations
 
+import math
 import os
 
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtCore import QLineF, QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QPalette, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QApplication
 
 from .core import settings
@@ -263,6 +265,46 @@ APP_STYLE = LIGHT_STYLE
 # Amber used for correction underlines - brighter so it reads on dark panes.
 CORRECTION_UNDERLINE_LIGHT = QColor(255, 165, 0)
 CORRECTION_UNDERLINE_DARK = QColor("#ffab4d")
+
+
+def mode_icon(dark: bool, size: int, color: QColor) -> QPixmap:
+    """Vector-drawn moon/sun for the dark-mode toggle.
+
+    Replaces the 🌙/☀️ emoji: systems without color-emoji fonts rendered
+    them as empty boxes. Mapping is unchanged - the moon sits on the
+    light theme (click for dark), the sun on the dark theme.
+    """
+    size = max(8, int(size))
+    pm = QPixmap(size, size)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    if dark:
+        pen = QPen(color, max(1.0, size / 9.0))
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        p.setPen(pen)
+        p.setBrush(color)
+        c = size / 2.0
+        p.drawEllipse(QPointF(c, c), size * 0.21, size * 0.21)
+        for i in range(8):
+            a = math.pi * i / 4.0
+            p.drawLine(QLineF(c + math.cos(a) * size * 0.34,
+                              c + math.sin(a) * size * 0.34,
+                              c + math.cos(a) * size * 0.47,
+                              c + math.sin(a) * size * 0.47))
+    else:
+        # crescent = solid disc minus an offset disc punched out
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(color)
+        p.drawEllipse(QRectF(size * 0.16, size * 0.16,
+                             size * 0.68, size * 0.68))
+        p.setCompositionMode(
+            QPainter.CompositionMode.CompositionMode_DestinationOut)
+        p.setBrush(QColor(0, 0, 0))
+        p.drawEllipse(QRectF(size * 0.40, size * 0.06,
+                             size * 0.68, size * 0.68))
+    p.end()
+    return pm
 
 
 def _palette(dark: bool) -> QPalette:

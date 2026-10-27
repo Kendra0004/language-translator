@@ -136,7 +136,7 @@ class PronunciationPanel(QWidget):
     def set_language(self, code: str | None) -> None:
         if code:
             lang = languages.get(code)
-            self.lang_chip.setText(f"{lang.flag} {lang.speak}")
+            self.lang_chip.setText(lang.speak)
             self.empty_label.hide()
         else:
             self.lang_chip.setText(self.tr("no target language"))
@@ -157,7 +157,7 @@ class PronunciationPanel(QWidget):
             self.clear()
             return
         lang = languages.get(analysis.lang)
-        self.lang_chip.setText(f"{lang.flag} {lang.speak}")
+        self.lang_chip.setText(lang.speak)
         self.say_label.setText(analysis.respelling)
         self.ipa_label.setText("/" + analysis.ipa_line + "/")
         self.syl_label.setText(analysis.syllable_line)

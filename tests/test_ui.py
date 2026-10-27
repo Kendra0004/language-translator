@@ -139,17 +139,24 @@ def test_dark_mode_toggle_styles_and_persists(qapp, isolated_settings, window):
     assert not window.dark_btn.isChecked()
     assert "1e1f26" not in qapp.styleSheet()
 
+    moon = window.dark_btn.icon()
+    assert not moon.isNull(), "light mode must show the drawn moon"
+    assert window.dark_btn.text() == "", "icon-only button (no emoji)"
+
     window.dark_btn.setChecked(True)
     assert window.dark_btn.isChecked()
     assert "1e1f26" in qapp.styleSheet(), "dark stylesheet not applied"
-    assert window.dark_btn.text() != "\U0001f319", "icon should show sun"
+    sun = window.dark_btn.icon()
+    assert not sun.isNull(), "dark mode must show the drawn sun"
+    assert sun.cacheKey() != moon.cacheKey(), "icon must swap on toggle"
     assert st.get_bool("dark_mode", False) is True
     pal = qapp.palette()
     assert pal.color(pal.ColorRole.Window).name() == "#1e1f26"
 
     window.dark_btn.setChecked(False)
     assert "1e1f26" not in qapp.styleSheet()
-    assert window.dark_btn.text() == "\U0001f319"
+    assert window.dark_btn.icon().cacheKey() != sun.cacheKey(), \
+        "moon must come back"
     assert st.get_bool("dark_mode", True) is False
 
 
@@ -166,6 +173,39 @@ def test_correction_underline_switches_with_theme(window, qapp):
     sels = window.src_text.extraSelections()
     assert sels and sels[0].format.underlineColor().name() == "#ffa500"
     window._clear_highlights(window.src_text)
+
+
+# ------------------------------------------------------- no flag emoji
+def test_language_labels_are_plain_names():
+    from app.core import languages
+    for code, text in languages.combo_items():
+        assert text == languages.get(code).name
+        assert text.isascii(), f"label {text!r} must not carry emoji"
+    assert "flag" not in languages.Language.__dataclass_fields__, \
+        "the flag field was removed with the emoji"
+
+
+def test_combo_and_panel_chip_have_no_emoji(window, qapp):
+    items = [window.src_combo.itemText(i)
+             for i in range(window.src_combo.count())]
+    assert "French" in items and "English" in items
+    assert all(t.isascii() for t in items)
+    window.src_combo.setCurrentIndex(window.src_combo.findData("fr"))
+    qapp.processEvents()
+    assert window.panel.lang_chip.text() == "French"
+    assert window.panel.lang_chip.text().isascii()
+
+
+def test_mode_icon_draws_visible_pixels():
+    from PySide6.QtGui import QColor
+    from app.theme import mode_icon
+    for dark in (False, True):
+        pm = mode_icon(dark, 24, QColor("#000000"))
+        assert not pm.isNull() and pm.width() == 24
+        img = pm.toImage()
+        opaque = sum(1 for y in range(24) for x in range(24)
+                     if img.pixelColor(x, y).alpha() > 0)
+        assert opaque > 12, f"{'sun' if dark else 'moon'} drew nothing"
 
 
 # --------------------------------------------------------------- shutdown

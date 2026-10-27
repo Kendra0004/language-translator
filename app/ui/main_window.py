@@ -5,8 +5,8 @@ import base64
 import logging
 import threading
 
-from PySide6.QtCore import QObject, Qt, Signal, Slot
-from PySide6.QtGui import QTextCharFormat, QTextCursor
+from PySide6.QtCore import QObject, QSize, Qt, Signal, Slot
+from PySide6.QtGui import QColor, QIcon, QPalette, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QDockWidget, QGridLayout, QLabel, QLineEdit,
     QMainWindow, QPlainTextEdit, QPushButton, QSplitter, QTextEdit,
@@ -114,9 +114,8 @@ class MainWindow(QMainWindow):
         self.dark_btn.setCheckable(True)
         self.dark_btn.setToolTip(self.tr("Dark mode"))
         self.dark_btn.setChecked(settings.get_bool("dark_mode", False))
-        self.dark_btn.setText("\u2600\ufe0f" if self.dark_btn.isChecked()
-                              else "\U0001f319")
         self.dark_btn.toggled.connect(self._on_dark_toggled)
+        self._refresh_dark_icon()
 
         # manual size control: A- / A+ step through theme.STEPS and the
         # choice is remembered per screen (monitor vs laptop)
@@ -370,6 +369,7 @@ class MainWindow(QMainWindow):
         self._central_layout.setSpacing(px(6))
         self.find_edit.setMaximumWidth(px(130))
         self.panel.apply_scale()
+        self._refresh_dark_icon()   # icon grows/shrinks with the UI
 
     def _step_scale(self, direction: int) -> None:
         """A-/A+: move one rung on the size ladder, saved for this screen."""
@@ -417,12 +417,21 @@ class MainWindow(QMainWindow):
             self._apply_scale(s, save=False)
 
     # ------------------------------------------------------------ dark mode
+    def _refresh_dark_icon(self) -> None:
+        """Draw the moon/sun toggle icon (emoji were rendering as boxes)."""
+        dark = self.dark_btn.isChecked()
+        color = (QColor("#ffffff") if dark else
+                 self.dark_btn.palette().color(QPalette.ColorRole.WindowText))
+        pm = theme.mode_icon(dark, px(18), color)
+        self.dark_btn.setIcon(QIcon(pm))
+        self.dark_btn.setIconSize(QSize(px(18), px(18)))
+
     @Slot(bool)
     def _on_dark_toggled(self, dark: bool) -> None:
         settings.set_bool("dark_mode", dark)
-        self.dark_btn.setText("\u2600\ufe0f" if dark else "\U0001f319")
         if QApplication.instance() is not None:
             apply_theme(QApplication.instance(), dark)
+        self._refresh_dark_icon()   # after apply_theme: palette decides color
         # re-paint corrections so the underline color matches the theme
         if self._src_changes:
             self._highlight(self.src_text, self._src_changes)
