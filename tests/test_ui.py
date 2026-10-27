@@ -196,6 +196,23 @@ def test_combo_and_panel_chip_have_no_emoji(window, qapp):
     assert window.panel.lang_chip.text().isascii()
 
 
+def test_captions_sit_below_the_controls_row(window, qapp):
+    """'Type here' must be under the language dropdown, not above it."""
+    grid = window._bar_grid
+    combo_row = grid.getItemPosition(grid.indexOf(window.src_combo))[0]
+    src_row = grid.getItemPosition(grid.indexOf(window.src_label))[0]
+    tgt_row = grid.getItemPosition(grid.indexOf(window.tgt_label))[0]
+    assert src_row > combo_row, "'Type here' must be below the dropdown"
+    assert tgt_row == src_row, "both captions share the row below controls"
+    # controls still occupy the row above the captions
+    tr_row = grid.getItemPosition(grid.indexOf(window.translate_btn))[0]
+    assert tr_row == combo_row
+
+
+def test_window_title_is_plain_app_name(window, qapp):
+    assert window.windowTitle() == "Language Translator"
+
+
 def test_mode_icon_draws_visible_pixels():
     from PySide6.QtGui import QColor
     from app.theme import mode_icon

@@ -59,7 +59,7 @@ class TranslateWorker(QObject):
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle(self.tr("Language Translator - FR / EN and more"))
+        self.setWindowTitle(self.tr("Language Translator"))
         self.resize(px(1120), px(680))
         self._job = 0
         self._latest = 0
@@ -129,17 +129,19 @@ class MainWindow(QMainWindow):
         self.src_label = QLabel(self.tr("Type here"))
         self.tgt_label = QLabel(self.tr("Translation"))
 
-        grid.addWidget(self.src_label, 0, 0)
-        grid.addWidget(self.tgt_label, 0, 2, 1, 6,
+        # controls on top, captions directly above their panes (so
+        # "Type here" sits below the language dropdown, not above it)
+        grid.addWidget(self.src_combo, 0, 0)
+        grid.addWidget(self.swap_btn, 0, 1)
+        grid.addWidget(self.tgt_combo, 0, 2)
+        grid.addWidget(self.translate_btn, 0, 3)
+        grid.addWidget(self.scale_dn, 0, 4)
+        grid.addWidget(self.scale_up, 0, 5)
+        grid.addWidget(self.dark_btn, 0, 6)
+        grid.addWidget(self.find_edit, 0, 7, alignment=Qt.AlignmentFlag.AlignRight)
+        grid.addWidget(self.src_label, 1, 0)
+        grid.addWidget(self.tgt_label, 1, 2, 1, 6,
                        Qt.AlignmentFlag.AlignRight)
-        grid.addWidget(self.src_combo, 1, 0)
-        grid.addWidget(self.swap_btn, 1, 1)
-        grid.addWidget(self.tgt_combo, 1, 2)
-        grid.addWidget(self.translate_btn, 1, 3)
-        grid.addWidget(self.scale_dn, 1, 4)
-        grid.addWidget(self.scale_up, 1, 5)
-        grid.addWidget(self.dark_btn, 1, 6)
-        grid.addWidget(self.find_edit, 1, 7, alignment=Qt.AlignmentFlag.AlignRight)
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(2, 1)
         grid.setColumnStretch(7, 1)
