@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 
 from ..core import correction, languages, settings, translator
 from ..core.pronunciation import analyze
+from .. import theme
 from ..theme import CORRECTION_UNDERLINE_DARK, CORRECTION_UNDERLINE_LIGHT
 from ..theme import apply_theme, px
 from .pronunciation_panel import PronunciationPanel
@@ -66,6 +67,7 @@ class MainWindow(QMainWindow):
         self._engine_status = ""
         self._src_changes: list[correction.Change] = []
         self._out_changes: list[correction.Change] = []
+        self._screen_hooked = False
 
         # -------------------------------------------------- translate worker
         # lives in the GUI thread; jobs run on daemon threads and emit back
@@ -78,8 +80,6 @@ class MainWindow(QMainWindow):
         # ---------------------------------------------------------- toolbar
         bar = QWidget()
         grid = QGridLayout(bar)
-        grid.setContentsMargins(px(4), px(4), px(4), px(4))
-        grid.setSpacing(px(6))
 
         self.src_combo = QComboBox()
         self.tgt_combo = QComboBox()
@@ -118,21 +118,32 @@ class MainWindow(QMainWindow):
                               else "\U0001f319")
         self.dark_btn.toggled.connect(self._on_dark_toggled)
 
+        # manual size control: A- / A+ step through theme.STEPS and the
+        # choice is remembered per screen (monitor vs laptop)
+        self.scale_dn = QToolButton()
+        self.scale_dn.setText("A\u2212")
+        self.scale_dn.clicked.connect(lambda: self._step_scale(-1))
+        self.scale_up = QToolButton()
+        self.scale_up.setText("A+")
+        self.scale_up.clicked.connect(lambda: self._step_scale(1))
+
         self.src_label = QLabel(self.tr("Type here"))
         self.tgt_label = QLabel(self.tr("Translation"))
 
         grid.addWidget(self.src_label, 0, 0)
-        grid.addWidget(self.tgt_label, 0, 2, 1, 4,
+        grid.addWidget(self.tgt_label, 0, 2, 1, 6,
                        Qt.AlignmentFlag.AlignRight)
         grid.addWidget(self.src_combo, 1, 0)
         grid.addWidget(self.swap_btn, 1, 1)
         grid.addWidget(self.tgt_combo, 1, 2)
         grid.addWidget(self.translate_btn, 1, 3)
-        grid.addWidget(self.dark_btn, 1, 4)
-        grid.addWidget(self.find_edit, 1, 5, alignment=Qt.AlignmentFlag.AlignRight)
+        grid.addWidget(self.scale_dn, 1, 4)
+        grid.addWidget(self.scale_up, 1, 5)
+        grid.addWidget(self.dark_btn, 1, 6)
+        grid.addWidget(self.find_edit, 1, 7, alignment=Qt.AlignmentFlag.AlignRight)
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(2, 1)
-        grid.setColumnStretch(5, 1)
+        grid.setColumnStretch(7, 1)
 
         # ------------------------------------------------------------- panes
         self.src_text = QPlainTextEdit()
@@ -150,11 +161,11 @@ class MainWindow(QMainWindow):
 
         central = QWidget()
         layout = QVBoxLayout(central)
-        layout.setContentsMargins(px(6), px(6), px(6), px(6))
-        layout.setSpacing(px(6))
         layout.addWidget(bar)
         layout.addWidget(splitter, 1)
         self.setCentralWidget(central)
+        self._bar_grid = grid
+        self._central_layout = layout
 
         # ------------------------------------------------------------- dock
         self.panel = PronunciationPanel()
@@ -165,6 +176,10 @@ class MainWindow(QMainWindow):
                          | QDockWidget.DockWidgetFeature.DockWidgetFloatable)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
         self._dock = dock
+
+        # scaled layout metrics (also re-run by A-/A+ and screen changes)
+        self._apply_metrics()
+        self._update_scale_buttons()
 
         # ---------------------------------------------------------- signals
         # NOTE: no auto-translate - translation starts only via the button
@@ -345,6 +360,61 @@ class MainWindow(QMainWindow):
             self.src_text.setPlainText(translated)
             self.out_text.setPlainText(source)
         self._refresh_panel()
+
+    # -------------------------------------------------------------- ui size
+    def _apply_metrics(self) -> None:
+        """(Re-)apply scale-dependent layout measurements."""
+        self._bar_grid.setContentsMargins(px(4), px(4), px(4), px(4))
+        self._bar_grid.setSpacing(px(6))
+        self._central_layout.setContentsMargins(px(6), px(6), px(6), px(6))
+        self._central_layout.setSpacing(px(6))
+        self.find_edit.setMaximumWidth(px(130))
+        self.panel.apply_scale()
+
+    def _step_scale(self, direction: int) -> None:
+        """A-/A+: move one rung on the size ladder, saved for this screen."""
+        self._apply_scale(theme.step(theme.scale(), direction), save=True)
+
+    def _apply_scale(self, s: float, save: bool) -> None:
+        """Switch the whole UI to scale `s` live (no restart needed)."""
+        theme.set_scale(s)
+        app = QApplication.instance()
+        if app is not None:
+            # rebuilds the stylesheet at the new scale; Qt re-polishes the
+            # widgets so fonts/paddings change immediately
+            apply_theme(app, self.dark_btn.isChecked())
+        self._apply_metrics()
+        self._update_scale_buttons()
+        # stylesheet swap clears extra selections on some styles: repaint
+        if self._src_changes:
+            self._highlight(self.src_text, self._src_changes)
+        if self._out_changes:
+            self._highlight(self.out_text, self._out_changes)
+        if save:
+            screen = self.screen() or QApplication.primaryScreen()
+            if screen is not None:
+                settings.set_double(theme.scale_key(screen.name()), s)
+
+    def _update_scale_buttons(self) -> None:
+        pct = f"{round(theme.scale() * 100)}%"
+        tip = self.tr("Size: {pct} - click to change").format(pct=pct)
+        self.scale_dn.setToolTip(tip)
+        self.scale_up.setToolTip(tip)
+
+    def showEvent(self, event) -> None:  # noqa: N802 - Qt API
+        super().showEvent(event)
+        handle = self.windowHandle()
+        if handle is not None and not self._screen_hooked:
+            handle.screenChanged.connect(self._on_screen_changed)
+            self._screen_hooked = True
+
+    def _on_screen_changed(self, screen) -> None:
+        """Two-monitor setup: each screen keeps its own size choice."""
+        if screen is None:
+            return
+        s = theme.scale_for_screen(screen)
+        if abs(s - theme.scale()) > 1e-6:
+            self._apply_scale(s, save=False)
 
     # ------------------------------------------------------------ dark mode
     @Slot(bool)

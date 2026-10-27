@@ -279,6 +279,100 @@ def test_theme_scale_grows_styles():
     assert theme.build_style(True, 1.0) == theme.DARK_STYLE
 
 
+def test_resolve_scale_priority():
+    """LT_UI_SCALE > saved per-screen choice > auto-detect."""
+    from app.theme import resolve_scale
+    assert resolve_scale(96, 1920, 1080) == 1.0             # auto
+    assert resolve_scale(96, 1920, 1080, saved=1.3) == 1.3  # saved wins
+    assert resolve_scale(96, 1366, 768, saved=1.3) == 1.3   # saved > auto bump
+    assert resolve_scale(96, 1920, 1080, saved=1.3,
+                         env="1.0") == 1.0                   # env wins over all
+    assert resolve_scale(96, 1920, 1080, saved=99.0) == 3.0  # clamped
+    assert resolve_scale(120, 1920, 1080) == 1.25            # OS scaling
+
+
+def test_scale_ladder_steps():
+    from app.theme import STEPS, step
+    assert step(1.0, +1) == 1.15
+    assert step(1.0, -1) == 0.85
+    assert step(1.15, +1) == 1.3
+    assert step(1.5, +1) == 1.5      # top of the ladder
+    assert step(0.85, -1) == 0.85    # bottom of the ladder
+    assert step(1.2, +1) == 1.3      # auto tiers snap to nearest rung
+    assert step(1.2, -1) == 1.15
+    assert STEPS[0] < STEPS[-1]
+
+
+# -------------------------------------------------------- manual ui size
+def test_scale_buttons_step_apply_and_persist(window, qapp, isolated_settings):
+    from app import theme
+    from app.core import settings as st
+    try:
+        theme.set_scale(1.0)
+        window.scale_up.click()
+        assert theme.scale() == 1.15
+        assert "font-size: 16px" in qapp.styleSheet()   # 14 * 1.15
+        assert "115%" in window.scale_up.toolTip()
+        key = theme.scale_key(window.screen().name())
+        assert st._settings.value(key) is not None, "choice must be saved"
+
+        window.scale_dn.click()
+        assert theme.scale() == 1.0
+        assert "font-size: 14px" in qapp.styleSheet()
+
+        # clamped at the bottom of the ladder
+        for _ in range(4):
+            window.scale_dn.click()
+        assert theme.scale() == 0.85
+        for _ in range(6):
+            window.scale_up.click()
+        assert theme.scale() == 1.5
+    finally:
+        theme.set_scale(1.0)
+
+
+def test_scale_change_keeps_correction_highlights(window, qapp):
+    from app import theme
+    from app.core import correction
+    window.src_text.setPlainText("tres joli")
+    changes = [correction.Change("tres", "très", "accent", 0, 4)]
+    window._highlight(window.src_text, changes)
+    try:
+        window.scale_up.click()
+        assert window.src_text.extraSelections(), \
+            "underlines must survive a live scale change"
+        assert window._src_changes
+    finally:
+        theme.set_scale(1.0)
+        window._highlight(window.src_text, changes)
+        window._clear_highlights(window.src_text)
+
+
+def test_screen_change_applies_per_screen_size(window, qapp,
+                                               isolated_settings):
+    """Dragging to the other monitor loads that screen's saved size."""
+    from PySide6.QtGui import QGuiApplication
+    from app import theme
+    from app.core import settings as st
+    screen = QGuiApplication.primaryScreen()
+    try:
+        theme.set_scale(1.0)
+        st.set_double(theme.scale_key(screen.name()), 1.3)
+        window._on_screen_changed(screen)
+        assert theme.scale() == 1.3
+        assert "font-size: 18px" in qapp.styleSheet()   # 14 * 1.3
+
+        # no saved size on this screen -> falls back to auto-detect
+        st._settings.remove(theme.scale_key(screen.name()))
+        window._on_screen_changed(screen)
+        geo = screen.availableGeometry()
+        expected = theme.resolve_scale(screen.logicalDotsPerInch(),
+                                       geo.width(), geo.height())
+        assert abs(theme.scale() - expected) < 1e-6
+    finally:
+        theme.set_scale(1.0)
+
+
 def test_fit_to_screen_clamps_oversized_window(qapp, isolated_settings):
     from PySide6.QtCore import QRect
     from app.main import fit_to_screen

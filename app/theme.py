@@ -6,16 +6,28 @@ that accept styling, the palette covers everything QSS cannot reach
 
 Sizing: every stylesheet is parameterized by a scale factor so the whole
 UI can grow on small/low-DPI screens. Call `set_scale()` once at startup
-(see `app.main.compute_scale`); `px()` converts a design pixel to the
-current scale - layout code uses it for margins/spacing.
+(`scale_for_screen` resolves it per monitor); `px()` converts a design
+pixel to the current scale - layout code uses it for margins/spacing.
+The A-/A+ toolbar buttons step through `STEPS` and remember the choice
+per screen.
 """
 from __future__ import annotations
+
+import os
 
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication
 
+from .core import settings
+
 # --------------------------------------------------------------------- scale
 _SCALE = 1.0
+
+# Manual size ladder used by the A-/A+ toolbar buttons.
+STEPS = (0.85, 1.0, 1.15, 1.3, 1.5)
+
+# Screens <= this (a classic small laptop panel) get the medium tier.
+SMALL_SCREEN = (1366, 768)
 
 
 def set_scale(s: float) -> None:
@@ -31,6 +43,72 @@ def scale() -> float:
 def px(n: int) -> int:
     """Design pixels at the current scale; used by layout code."""
     return max(1, int(round(n * _SCALE)))
+
+
+def compute_scale(dpi: float, screen_w: int, screen_h: int,
+                  override: str | None = None) -> float:
+    """Pick the automatic UI scale from OS DPI + screen size.
+
+    - OS scaling (125% -> 120 DPI) grows the UI proportionally, clamped
+      to [1.0, 2.0] so nothing becomes unusably huge;
+    - screens <= 1366x768 are bumped to 1.2 - the "medium" tier for
+      small-resolution laptops;
+    - an override string (LT_UI_SCALE) replaces everything.
+    """
+    if override:
+        try:
+            return max(0.5, min(float(override), 3.0))
+        except ValueError:
+            import logging
+            logging.getLogger(__name__).warning(
+                "ignoring bad LT_UI_SCALE=%r", override)
+    s = dpi / 96.0
+    s = max(1.0, min(s, 2.0))
+    if screen_w <= SMALL_SCREEN[0] and screen_h <= SMALL_SCREEN[1]:
+        s = max(s, 1.2)
+    return round(s, 2)
+
+
+def resolve_scale(dpi: float, screen_w: int, screen_h: int,
+                  saved: float = 0.0, env: str | None = None) -> float:
+    """Priority: LT_UI_SCALE env > saved per-screen choice > auto-detect."""
+    if env:
+        return compute_scale(dpi, screen_w, screen_h, env)
+    if saved > 0:
+        return round(max(0.5, min(saved, 3.0)), 2)
+    return compute_scale(dpi, screen_w, screen_h, None)
+
+
+def scale_key(screen_name: str) -> str:
+    """Settings key holding the manual size chosen on a given screen."""
+    return f"ui_scale@{screen_name}"
+
+
+def scale_for_screen(screen, env: str | None = None) -> float:
+    """Resolve the UI scale for a QScreen (saved choice, else auto)."""
+    geo = screen.availableGeometry()
+    saved = settings.get_double(scale_key(screen.name()), 0.0)
+    return resolve_scale(screen.logicalDotsPerInch(), geo.width(),
+                         geo.height(), saved,
+                         os.environ.get("LT_UI_SCALE") if env is None else env)
+
+
+def step(current: float, direction: int) -> float:
+    """Neighbour on the size ladder; clamped at the ends.
+
+    Values not on the ladder (auto tiers like 1.2) snap to the next
+    rung above/below them.
+    """
+    eps = 1e-6
+    if direction > 0:
+        for s in STEPS:
+            if s > current + eps:
+                return s
+        return STEPS[-1]
+    for s in reversed(STEPS):
+        if s < current - eps:
+            return s
+    return STEPS[0]
 
 
 def _values(s: float) -> dict[str, int]:

@@ -42,10 +42,15 @@ including 0.6× / 0.8× slow motion for learners.
   - ambiguity-safe: real unaccented words (`ou`, `la`, `a`, `cuando`, `si`)
     are never "corrected" — a change only happens when the accented spelling
     is far more frequent; the word you are currently typing is never touched
-- **Auto-sizing UI** — fonts, controls and spacing scale with the screen:
-  OS display scaling (125%/150%) is honoured, and small-resolution screens
-  (≤ 1366×768) automatically get the medium tier (~20% larger); the window
-  never opens larger than the display; `LT_UI_SCALE=1.5` forces a size
+- **Adjustable UI size** — fonts, controls and spacing scale together:
+  - **`A−` / `A+` toolbar buttons** step the size (85% → 100% → 115% →
+    130% → 150%) and apply instantly, no restart
+  - the choice is remembered **per screen**, so a monitor and a laptop
+    each keep their own size when you drag the window between them
+  - auto-detection still sets a sensible start: OS display scaling
+    (125%/150%) is honoured, screens ≤ 1366×768 get the medium tier
+    (120%); the window never opens larger than the display;
+    `LT_UI_SCALE=1.5` overrides everything for testing
 - Find-in-text box, persisted window layout & language pair
 
 ## Running from source

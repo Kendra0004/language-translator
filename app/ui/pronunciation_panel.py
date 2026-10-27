@@ -50,6 +50,7 @@ class PronunciationPanel(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(px(12), px(10), px(12), px(10))
         root.setSpacing(px(8))
+        self._root = root
 
         head = QHBoxLayout()
         self.lang_chip = QLabel("")
@@ -117,6 +118,15 @@ class PronunciationPanel(QWidget):
 
         self.set_language(None)
         self.retranslate()
+
+    def apply_scale(self) -> None:
+        """Re-apply scaled metrics after a UI size change (A-/A+)."""
+        self._root.setContentsMargins(px(12), px(10), px(12), px(10))
+        self._root.setSpacing(px(8))
+        self.cards.setSpacing(px(6))
+        analysis = getattr(self, "_analysis", None)
+        if analysis is not None:
+            self.show_analysis(analysis)   # rebuild cards at the new size
 
     # ------------------------------------------------------------ state
     def retranslate(self) -> None:
@@ -203,7 +213,7 @@ class PronunciationPanel(QWidget):
             row.addWidget(note)
 
         play = QPushButton("\u25b6")
-        play.setFixedWidth(34)
+        play.setFixedWidth(px(34))
         play.setToolTip(self.tr("Hear this word"))
         play.clicked.connect(lambda _=False, w=word: self._play_word(w, lang))
         row.addWidget(play)
