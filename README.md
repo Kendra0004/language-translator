@@ -86,7 +86,7 @@ git clone https://github.com/Kendra0004/language-translator.git
 **Windows (PowerShell or Command Prompt):**
 
 ```bat
-py -3.12 -m venv .venv
+py -3 -m venv .venv
 .\.venv\Scripts\pip install -r requirements.txt
 ```
 
