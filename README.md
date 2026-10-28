@@ -7,7 +7,7 @@ syllables with the stressed one highlighted, an English-friendly reading
 (`bon-zhoor`), liaison notes, and a **native voice you can play back**,
 including 0.6× / 0.8× slow motion for learners.
 
-![layout: two text panes + pronunciation dock]
+<!-- screenshot placeholder: two text panes + pronunciation dock -->
 
 ## Features
 
@@ -15,9 +15,11 @@ including 0.6× / 0.8× slow motion for learners.
   to start a translation (no requests are fired while you type, so no rate
   limits are wasted); the button disables and shows `Translating…` while a
   job runs, `Ctrl+Enter`/`Enter` do nothing
-- **Dark mode** — 🌙 toolbar toggle switches the whole app (panes, toolbar,
-  pronunciation cards, scrollbars, selection colors) between light and dark;
-  the choice is saved and applied before the first frame, no flash
+- **Dark mode** — the toolbar's moon/sun toggle (drawn in code, not an
+  emoji, so it renders on any system) switches the whole app (panes,
+  toolbar, pronunciation cards, scrollbars, selection colors) between
+  light and dark; the choice is saved and applied before the first
+  frame, no flash
 - **Manual language pickers** + one-click swap (swaps the texts too)
 - **Pronunciation panel** (right dock) for every non-English language:
   - big readable approximation: `bon-ZHOOR a too kaw-mahnt …`
@@ -53,15 +55,95 @@ including 0.6× / 0.8× slow motion for learners.
     `LT_UI_SCALE=1.5` overrides everything for testing
 - Find-in-text box, persisted window layout & language pair
 
-## Running from source
+## Installation
+
+All you need is **Python 3.11 or newer** ([python.org](https://www.python.org/downloads/)
+— 3.13 recommended). Git is optional (you can download a ZIP instead).
+Internet is only needed for the first download and for online translation.
+
+### 1. Get the code
+
+On GitHub, click the green **Code** button → **Download ZIP**, then
+extract the ZIP anywhere (e.g. your Desktop). Or with git:
+
+```bash
+git clone https://github.com/Kendra0004/language-translator.git
+```
+
+### 2. Open a terminal in the project folder
+
+- **Windows:** open the folder in Explorer, click the address bar,
+  type `cmd` and press Enter
+- **macOS:** press `Cmd+Space`, type `Terminal`, then `cd ` and drag
+  the folder into the window
+- **Linux:** right-click inside the folder → *Open in Terminal*
+
+### 3. Install the dependencies
+
+**Windows (PowerShell or Command Prompt):**
+
+```bat
+py -3 -m venv .venv
+.\.venv\Scripts\pip install -r requirements.txt
+```
+
+**macOS / Linux:**
 
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m app.main          # add requirements-offline.txt for offline mode
 ```
 
-Tests: `.venv/bin/python -m pytest tests -q`
+(The `venv` step creates an isolated environment so the app's pinned
+library versions can't break anything else on your machine.)
+
+### 4. Run the app
+
+**Windows:**
+
+```bat
+.\.venv\Scripts\python -m app.main
+```
+
+**macOS / Linux:**
+
+```bash
+.venv/bin/python -m app.main
+```
+
+The window opens immediately — type text, pick the languages, click
+**Translate ▶**.
+
+### Optional: offline translation
+
+**Windows:**
+
+```bat
+.\.venv\Scripts\pip install -r requirements-offline.txt
+```
+
+**macOS / Linux:**
+
+```bash
+.venv/bin/pip install -r requirements-offline.txt
+```
+
+This adds the Argostranslate engine (~1 GB). The translation model for
+your language pair downloads automatically the first time the offline
+engine is used.
+
+### Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `'python' is not recognized` | Re-run the Python installer and tick **Add python.exe to PATH**, or use `py -3` instead of `python` |
+| `pip` install fails with SSL/certificate errors | Check your system clock (Settings → Time), or a corporate proxy is blocking PyPI |
+| Translation says `429 Too Many Requests` | Google rate-limited the free endpoint — wait a minute and retry, or install offline mode above |
+| Play button is silent | Install ffmpeg: `winget install ffmpeg` (Windows) or `brew install ffmpeg` (macOS) |
+| Windows SmartScreen says "Windows protected your PC" on a built `.exe` | Click **More info** → **Run anyway** (the binary isn't code-signed) |
+
+Tests: `.venv/bin/python -m pytest tests -q`  
+(Windows: `.\.venv\Scripts\python -m pytest tests -q`)
 
 ## Building
 
@@ -86,7 +168,7 @@ and invoke PyInstaller — nothing else to do.
 
 ### Why offline is a build flag
 The offline engine (Argostranslate) depends on stanza/torch/spacy, which adds
-roughly a GB to the executable. The app works fully without it (three online
+roughly a GB to the executable. The app works fully without it (the two online
 engines), and the offline engine is included automatically when the library
 is present — so the default build stays lean.
 
@@ -95,7 +177,7 @@ is present — so the default build stays lean.
 ```
 app/
   main.py                  entry point (scale detection, screen fitting)
-  theme.py                 scale-aware light/dark stylesheets + palettes
+  theme.py                 scale-aware light/dark stylesheets + palettes, moon/sun icon
   ui/main_window.py        panes, language pickers, threading, status bar
   ui/pronunciation_panel.py the dock: reading, IPA, cards, audio
   core/languages.py        language registry (add a language in one place)
@@ -106,6 +188,7 @@ app/
   core/tts.py              native-voice mp3 fetch + cache
   core/settings.py         persisted preferences
 tests/                     pytest coverage of the language engine
+run.py                     PyInstaller entry point (imports app.main as a package)
 translator.spec            PyInstaller configuration (Windows + Linux)
 build.ps1                  one-command Windows build
 build.sh                   one-command Linux build
