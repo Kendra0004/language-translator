@@ -21,3 +21,6 @@ dist/
 # Local model / audio caches (kept out of git)
 *.mp3
 models/
+
+# Build smoke-test log (written by build.ps1 [5/5])
+smoke.log

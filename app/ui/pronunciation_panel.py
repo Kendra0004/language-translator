@@ -162,11 +162,19 @@ class PronunciationPanel(QWidget):
         self.ipa_label.setText("/" + analysis.ipa_line + "/")
         self.syl_label.setText(analysis.syllable_line)
         self.play_btn.setEnabled(True)
+        self.words_title.show()
         self.empty_label.hide()
         for word in analysis.words:
             if word.ipa:
                 self.cards.addWidget(self._card(word, analysis.lang))
         self.cards.addStretch(1)
+
+    def show_error(self, msg: str) -> None:
+        """Surface an analysis failure instead of showing an empty dock."""
+        self.words_title.hide()
+        self.empty_label.setText(
+            self.tr("Pronunciation unavailable: {msg}").format(msg=msg))
+        self.empty_label.show()
 
     # ------------------------------------------------------------ pieces
     def _clear_cards(self) -> None:

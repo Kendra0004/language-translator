@@ -1,6 +1,8 @@
 """Language engine tests: IPA, syllables, stress, reading, liaisons."""
 from __future__ import annotations
 
+import pytest
+
 from app.core.pronunciation import analyze, word_ipa
 
 
@@ -113,3 +115,42 @@ def test_google_json_parser(monkeypatch):
                         lambda *a, **k: FakeResp())
     r = translator._google("Hello.", "en", "fr")
     assert r == "Bonjour. "
+
+
+# ------------------------------------------- engine failure is reported
+def test_broken_engine_raises_instead_of_empty_panel(monkeypatch):
+    """Regression: in frozen builds a missing data file (panphon) made every
+    word come back empty, analyze() returned None, and the panel silently
+    cleared. The failure must now surface as a RuntimeError carrying the
+    original cause, stay visible on later refreshes ("" is cached, so no
+    epitran call would re-raise), and letter-free input must NOT raise."""
+    from app.core import pronunciation
+
+    real_epitran = pronunciation._epitran
+    fail = {"on": True}
+
+    def fake_epitran(lang):
+        if fail["on"]:
+            raise RuntimeError("epitran exploded")
+        return real_epitran(lang)
+
+    err_before = dict(pronunciation._engine_error)
+    cache_before = dict(pronunciation._ipa_cache)
+    monkeypatch.setattr(pronunciation, "_epitran", fake_epitran)
+    try:
+        # 1. engine broken -> RuntimeError naming the language + the cause
+        with pytest.raises(RuntimeError, match="pronunciation engine failed"):
+            analyze("zzqubblen jukkaq", "fr")
+        # 2. engine "heals", but "" is cached for those words: the error is
+        #    sticky, so the panel keeps reporting instead of going empty again
+        fail["on"] = False
+        with pytest.raises(RuntimeError) as excinfo:
+            analyze("zzqubblen jukkaq", "fr")
+        assert "epitran exploded" in str(excinfo.value.__cause__)
+        # 3. letter-free input still returns None, never raises
+        assert analyze("123 456", "fr") is None
+    finally:
+        pronunciation._engine_error.clear()
+        pronunciation._engine_error.update(err_before)
+        pronunciation._ipa_cache.clear()
+        pronunciation._ipa_cache.update(cache_before)

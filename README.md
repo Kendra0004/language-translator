@@ -57,9 +57,12 @@ including 0.6× / 0.8× slow motion for learners.
 
 ## Installation
 
-All you need is **Python 3.11 or newer** ([python.org](https://www.python.org/downloads/)
-— 3.13 recommended). Git is optional (you can download a ZIP instead).
-Internet is only needed for the first download and for online translation.
+All you need is **Python 3.10–3.12** — **3.12 recommended**
+([python.org](https://www.python.org/downloads/)). Avoid Python 3.13 on
+Windows: one dependency (`editdistance`) ships no prebuilt wheel for it,
+so installing would demand the MSVC Build Tools. Git is optional (you can
+download a ZIP instead). Internet is only needed for the first download
+and for online translation.
 
 ### 1. Get the code
 
@@ -83,7 +86,7 @@ git clone https://github.com/Kendra0004/language-translator.git
 **Windows (PowerShell or Command Prompt):**
 
 ```bat
-py -3 -m venv .venv
+py -3.12 -m venv .venv
 .\.venv\Scripts\pip install -r requirements.txt
 ```
 
@@ -138,6 +141,8 @@ engine is used.
 |---|---|
 | `'python' is not recognized` | Re-run the Python installer and tick **Add python.exe to PATH**, or use `py -3` instead of `python` |
 | `pip` install fails with SSL/certificate errors | Check your system clock (Settings → Time), or a corporate proxy is blocking PyPI |
+| `Failed building wheel for editdistance` on Windows | You're on Python 3.13+ — that dependency has no wheel for it. Install **Python 3.12** from python.org (not the Microsoft Store) and use `py -3.12` |
+| `running scripts is disabled on this system` (build.ps1) | Run `powershell -ExecutionPolicy Bypass -File .\build.ps1` |
 | Translation says `429 Too Many Requests` | Google rate-limited the free endpoint — wait a minute and retry, or install offline mode above |
 | Play button is silent | Install ffmpeg: `winget install ffmpeg` (Windows) or `brew install ffmpeg` (macOS) |
 | Windows SmartScreen says "Windows protected your PC" on a built `.exe` | Click **More info** → **Run anyway** (the binary isn't code-signed) |
@@ -147,6 +152,11 @@ Tests: `.venv/bin/python -m pytest tests -q`
 
 ## Building
 
+Use **one script per OS** — `build.sh` is bash-only (Linux/macOS/WSL),
+`build.ps1` is the Windows one. Each runs: venv → dependencies → tests →
+PyInstaller → a **smoke test** that starts the packaged binary and checks
+the pronunciation panel works before declaring success.
+
 ### Windows (PowerShell)
 
 ```powershell
@@ -155,7 +165,14 @@ Tests: `.venv/bin/python -m pytest tests -q`
 .\build.ps1 -Offline     # also bundle the offline engine (~1 GB extra)
 ```
 
-### Linux (bash)
+Requires **Python 3.10–3.12** (3.12 recommended — see Installation).
+If PowerShell refuses to run scripts, use:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build.ps1
+```
+
+### Linux / macOS (bash)
 
 ```bash
 ./build.sh               # -> dist/LanguageTranslator/LanguageTranslator
@@ -163,8 +180,7 @@ Tests: `.venv/bin/python -m pytest tests -q`
 ./build.sh --offline     # also bundle the offline engine (~1 GB extra)
 ```
 
-Both scripts create the venv, install pinned dependencies, run the tests
-and invoke PyInstaller — nothing else to do.
+Both scripts are otherwise self-contained — nothing else to do.
 
 ### Why offline is a build flag
 The offline engine (Argostranslate) depends on stanza/torch/spacy, which adds

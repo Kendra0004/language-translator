@@ -42,6 +42,51 @@ def fit_to_screen(win, avail: QRect, others: tuple = ()) -> bool:
     return True
 
 
+def _run_smoke() -> int:
+    """LT_SMOKE=1: exercise the pronunciation panel + correction, exit.
+
+    Used by the build scripts to verify the *packaged* binary does what
+    source runs do (the panel used to stay empty in frozen builds).
+    Prints to stdout when a console exists and always appends to
+    LT_SMOKE_LOG, because windowed builds have no console on Windows;
+    the exit code is the pass/fail signal.
+    """
+    lines: list[str] = []
+    code = 0
+    try:
+        from .core import correction
+        from .core.pronunciation import analyze
+
+        analysis = analyze("bonjour le monde, je suis content", "fr")
+        if analysis is None or not analysis.words:
+            raise RuntimeError("analyze() returned no words")
+        if not analysis.ipa_line:
+            raise RuntimeError("analyze() produced no IPA line")
+        res = correction.correct("tres joli citta", "fr")
+        if not res.changes:
+            raise RuntimeError("correction restored no accents")
+        lines.append(
+            f"SMOKE OK words={len(analysis.words)} "
+            f"ipa=/{analysis.ipa_line}/ corrections={len(res.changes)}")
+    except Exception:  # noqa: BLE001 - the traceback IS the report
+        code = 1
+        import traceback
+        lines.append("SMOKE FAIL\n" + traceback.format_exc())
+    text = "\n".join(lines) + "\n"
+    try:
+        print(text, end="", flush=True)
+    except Exception:  # noqa: BLE001 - no console in windowed builds
+        pass
+    log_path = os.environ.get("LT_SMOKE_LOG")
+    if log_path:
+        try:
+            with open(log_path, "a", encoding="utf-8") as fh:
+                fh.write(text)
+        except OSError:
+            pass
+    return code
+
+
 def main() -> int:
     logging.basicConfig(
         level=logging.INFO,
@@ -75,6 +120,10 @@ def main() -> int:
     others = tuple(scr.availableGeometry()
                    for scr in app.screens() if scr is not screen)
     fit_to_screen(window, geo, others)
+    if os.environ.get("LT_SMOKE") == "1":
+        # packaged-build self test: window is built but never shown, so
+        # no settings are written and nothing reaches the event loop
+        return _run_smoke()
     window.show()
     return app.exec()
 

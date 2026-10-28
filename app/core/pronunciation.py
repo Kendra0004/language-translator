@@ -12,6 +12,13 @@ _WORD_RE = re.compile(r"\S+")
 _epitran_lock = threading.Lock()
 _epitran_cache: dict[str, object] = {}
 _ipa_cache: dict[tuple[str, str], str] = {}
+# First error raised by the pronunciation engine (epitran/panphon) per
+# language, kept so analyze() can report WHY every word came back empty
+# instead of silently returning None - that silence is what made broken
+# builds look like an empty panel. Deliberately sticky: once a word's ""
+# lands in _ipa_cache no further epitran call happens, so the error would
+# otherwise vanish on the next refresh. Set by word_ipa(), read by analyze().
+_engine_error: dict[str, BaseException] = {}
 
 # French: word-final schwa stays only for short function words.
 _FR_FUNCTION_WORDS = {
@@ -97,7 +104,8 @@ def word_ipa(word: str, lang: str) -> str:
         return _ipa_cache[key]
     try:
         ipa = _epitran(lang).transliterate(core)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 - remembered for analyze()
+        _engine_error.setdefault(lang, exc)
         ipa = ""
     ipa = _postprocess(core, ipa, lang)
     _ipa_cache[key] = ipa
@@ -128,7 +136,11 @@ def _postprocess(core: str, ipa: str, lang: str) -> str:
 
 
 def analyze(text: str, lang: str) -> Analysis | None:
-    """Analyse `text` as `lang`. Returns None when there is nothing to say."""
+    """Analyse `text` as `lang`. Returns None when there is nothing to say.
+
+    Raises RuntimeError when the pronunciation engine itself is broken
+    (missing data files, frozen-build problems), so callers can surface
+    the cause instead of showing an empty panel."""
     if not text.strip() or lang not in phonetics._ONSETS:
         return None
     tokens = _WORD_RE.findall(text)
@@ -167,6 +179,14 @@ def analyze(text: str, lang: str) -> Analysis | None:
     if lang == "fr":
         _apply_liaisons(words)
     if not any(w.ipa for w in words):
+        # No word got a pronunciation. If the engine itself failed (e.g. a
+        # data file missing from a frozen build), raise so the UI can say
+        # what broke instead of rendering an empty panel. Only truly empty
+        # input (no letters at all) still returns None.
+        err = _engine_error.get(lang)
+        if err is not None and any(w.core for w in words):
+            raise RuntimeError(
+                f"pronunciation engine failed ({lang}): {err}") from err
         return None
     return Analysis(lang=lang, words=words, separators=seps)
 

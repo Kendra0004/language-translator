@@ -32,12 +32,12 @@ command -v "$PYTHON" >/dev/null || {
     exit 1
 }
 
-echo "[1/4] Creating virtual environment..."
+echo "[1/5] Creating virtual environment..."
 [ -d .venv-build ] || "$PYTHON" -m venv .venv-build
 PIP=.venv-build/bin/pip
 PYI=.venv-build/bin/pyinstaller
 
-echo "[2/4] Installing dependencies (PySide6 is ~200 MB, first run only)..."
+echo "[2/5] Installing dependencies (PySide6 is ~200 MB, first run only)..."
 "$PIP" install --upgrade pip
 if [ "$OFFLINE" -eq 1 ]; then
     "$PIP" install -r requirements-offline.txt pyinstaller
@@ -45,25 +45,36 @@ else
     "$PIP" install -r requirements.txt pyinstaller
 fi
 
-echo "[3/4] Running tests..."
+echo "[3/5] Running tests..."
 "$PIP" install pytest >/dev/null
 QT_QPA_PLATFORM=offscreen .venv-build/bin/python -m pytest tests -q
 
-echo "[4/4] Building the binary..."
+echo "[4/5] Building the binary..."
+# NOTE: PyInstaller rejects --onefile/--onedir whenever a .spec file is
+# given, so the spec reads LT_ONEFILE from the environment instead.
+rm -rf dist
 if [ "$ONEDIR" -eq 1 ]; then
     "$PYI" translator.spec --noconfirm
+    BIN=dist/LanguageTranslator/LanguageTranslator
 else
-    "$PYI" translator.spec --noconfirm --onefile
+    LT_ONEFILE=1 "$PYI" translator.spec --noconfirm
+    BIN=dist/LanguageTranslator
 fi
 
-BIN=dist/LanguageTranslator/LanguageTranslator
-if [ -x "$BIN" ]; then
-    echo
-    echo "BUILD OK -> $BIN"
-    if [ "$ONEDIR" -eq 0 ]; then
-        echo "(onefile variant: dist/LanguageTranslator)"
-    fi
-else
+if [ ! -x "$BIN" ]; then
     echo "Build finished but no binary found - check the log above." >&2
+    exit 1
+fi
+echo
+echo "BUILD OK -> $BIN"
+
+echo "[5/5] Smoke-testing the binary (startup + pronunciation panel)..."
+SMOKE_OUT="$(LT_SMOKE=1 QT_QPA_PLATFORM=offscreen timeout 180 "$BIN" 2>&1 || true)"
+if echo "$SMOKE_OUT" | grep -q "SMOKE OK"; then
+    echo "$SMOKE_OUT" | grep "SMOKE OK"
+    echo "SMOKE OK"
+else
+    echo "Smoke test FAILED - binary output:" >&2
+    echo "$SMOKE_OUT" | tail -30 >&2
     exit 1
 fi

@@ -462,9 +462,14 @@ class MainWindow(QMainWindow):
             return
         try:
             self.panel.show_analysis(analyze(text, code))
-        except Exception:  # noqa: BLE001 - analysis must never crash the UI
+        except Exception as exc:  # noqa: BLE001 - analysis must never crash UI
             log.exception("pronunciation analysis failed")
             self.panel.clear()
+            # never fail silently: say what broke instead of an empty dock
+            self.panel.show_error(str(exc) or exc.__class__.__name__)
+            self.statusBar().showMessage(
+                self.tr("Pronunciation unavailable: {msg}").format(
+                    msg=exc))
 
     # ------------------------------------------------------------ find box
     def _find(self, needle: str) -> None:

@@ -470,3 +470,73 @@ def test_pyinstaller_entry_bootstraps_package_main():
     spec_file = os.path.join(root, "translator.spec")
     with open(spec_file, encoding="utf-8") as fh:
         assert '["run.py"]' in fh.read(), "spec must use run.py entry"
+
+
+def test_spec_bundles_all_pronunciation_data_files():
+    """Regression: panphon's feature tables were never collected, so in the
+    frozen app Epitran('fra-Latn') raised on startup of the panel, every
+    word came back empty, and the dock stayed blank. Every package whose
+    data files are opened at runtime must be listed in the spec."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(root, "translator.spec"), encoding="utf-8") as fh:
+        spec = fh.read()
+    for pkg in ("epitran",      # OVM pronunciation rules
+                "jamo",         # jamo name tables (read at epitran import)
+                "panphon",      # phoneme feature tables (epitran needs these)
+                "wordfreq",     # word frequency lists (correction)
+                "langcodes",    # language tag data for wordfreq
+                "spellchecker"):  # typo dictionary
+        assert f'collect_data_files("{pkg}")' in spec, \
+            f"spec must bundle {pkg}'s data files"
+
+
+def test_build_scripts_use_onefile_env_not_illegal_flag():
+    """PyInstaller rejects --onefile whenever a .spec file is given, so the
+    spec must read LT_ONEFILE from the environment instead (regression:
+    `./build.sh --onefile` died with 'makespec options not valid')."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(root, "translator.spec"), encoding="utf-8") as fh:
+        spec = fh.read()
+    assert 'os.environ.get("LT_ONEFILE")' in spec, "spec must branch on LT_ONEFILE"
+    assert "COLLECT" in spec and "ONEFILE" in spec
+    with open(os.path.join(root, "build.sh"), encoding="utf-8") as fh:
+        sh = fh.read()
+    assert "translator.spec --noconfirm --onefile" not in sh
+    assert 'LT_ONEFILE=1 "$PYI" translator.spec' in sh
+    assert "SMOKE" in sh, "Linux build must smoke-test the binary"
+    with open(os.path.join(root, "build.ps1"), encoding="utf-8") as fh:
+        ps1 = fh.read()
+    assert "translator.spec --noconfirm --onefile" not in ps1
+    assert "LT_ONEFILE" in ps1
+
+
+def test_build_ps1_fails_fast_and_prefers_python312():
+    """Windows regressions: a failing pip used to cascade into misleading
+    'pyinstaller.exe not recognized', and Python 3.13 tried to compile
+    editdistance (no wheel). Both must be guarded."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(root, "build.ps1"), encoding="utf-8") as fh:
+        ps1 = fh.read()
+    assert "LASTEXITCODE" in ps1, "native command failures must stop the build"
+    assert "-3.12" in ps1, "must prefer a Python that has prebuilt wheels"
+    assert "editdistance" in ps1, "the refusal must explain WHY"
+    assert "LT_SMOKE" in ps1, "Windows build must smoke-test the exe"
+
+
+def test_smoke_mode_reports_ok(tmp_path):
+    """LT_SMOKE=1 is the packaged-build self test (startup + panel analysis
+    + correction): exit code 0 and a SMOKE OK report on stdout and in the
+    LT_SMOKE_LOG file the build scripts read."""
+    import subprocess
+    import sys
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    log = tmp_path / "smoke.log"
+    env = dict(os.environ)
+    env.update(LT_SMOKE="1", LT_SMOKE_LOG=str(log),
+               QT_QPA_PLATFORM="offscreen")
+    env.pop("LT_UI_SCALE", None)
+    proc = subprocess.run([sys.executable, "-m", "app.main"], cwd=root,
+                          env=env, capture_output=True, text=True, timeout=180)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "SMOKE OK" in proc.stdout, proc.stdout
+    assert "SMOKE OK" in log.read_text(encoding="utf-8")
