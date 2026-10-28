@@ -512,14 +512,18 @@ def test_build_scripts_use_onefile_env_not_illegal_flag():
 
 def test_build_ps1_fails_fast_and_prefers_python312():
     """Windows regressions: a failing pip used to cascade into misleading
-    'pyinstaller.exe not recognized', and Python 3.13 tried to compile
-    editdistance (no wheel). Both must be guarded."""
+    'pyinstaller.exe not recognized'. Any non-zero exit must stop the
+    build, 3.12 is preferred, 3.13/3.14 stay allowed (the vendored
+    editdistance stand-in removed the compiler requirement), and the exe
+    gets smoke-tested."""
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     with open(os.path.join(root, "build.ps1"), encoding="utf-8") as fh:
         ps1 = fh.read()
     assert "LASTEXITCODE" in ps1, "native command failures must stop the build"
     assert "-3.12" in ps1, "must prefer a Python that has prebuilt wheels"
-    assert "editdistance" in ps1, "the refusal must explain WHY"
+    assert "-3.14" in ps1 and "-3.13" in ps1, \
+        "3.13/3.14 must remain installable (vendored stand-in)"
+    assert "editdistance" in ps1, "must reference the bundled stand-in"
     assert "LT_SMOKE" in ps1, "Windows build must smoke-test the exe"
 
 
@@ -539,6 +543,49 @@ def test_build_scripts_tolerate_offline_pip_self_upgrade():
         "build.ps1 self-upgrade must warn, not Fail"
     assert "no network?" in sh and "no network?" in ps1, \
         "both scripts must say why the upgrade was skipped"
+
+
+def test_editdistance_shim_and_wheel_are_bundled():
+    """Python 3.13/3.14 have no editdistance wheels (last release 0.8.1,
+    Feb 2024, cp312 max) and panphon declares it as a hard requirement -
+    the bundled pure-Python stand-in must therefore be correct (Levenshtein
+    + the eval() alias panphon calls), shipped as a wheel named exactly
+    like the real package, and installed by BOTH build scripts before the
+    requirements so pip never reaches for a compiler."""
+    import importlib.util
+    import zipfile
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    shim_path = os.path.join(root, "vendor", "editdistance", "editdistance.py")
+    spec = importlib.util.spec_from_file_location("_lt_shim", shim_path)
+    shim = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(shim)
+    for a, b, want in [("kitten", "sitting", 3), ("flaw", "lawn", 2),
+                       ("sunday", "saturday", 3), ("LUCY", "LEARNING", 7),
+                       ("bonjour", "bonjur", 1), ("abc", "abc", 0),
+                       ("", "abc", 3), ("", "", 0)]:
+        assert shim.distance(a, b) == want, (a, b)
+        assert shim.eval(a, b) == want, "panphon calls editdistance.eval()"
+
+    whl = os.path.join(root, "vendor", "wheels",
+                       "editdistance-0.8.1-py3-none-any.whl")
+    assert os.path.isfile(whl), "bundled wheel is missing"
+    with zipfile.ZipFile(whl) as z:
+        meta = z.read("editdistance-0.8.1.dist-info/METADATA").decode("utf-8")
+    assert "Name: editdistance" in meta and "Version: 0.8.1" in meta, \
+        "wheel must masquerade as the real package to satisfy panphon"
+
+    with open(os.path.join(root, "build.sh"), encoding="utf-8") as fh:
+        sh = fh.read()
+    with open(os.path.join(root, "build.ps1"), encoding="utf-8") as fh:
+        ps1 = fh.read()
+    for script, text in (("build.sh", sh), ("build.ps1", ps1)):
+        i = text.find("vendor/wheels/editdistance")
+        if i < 0:
+            i = text.find("vendor\\wheels\\editdistance")
+        req = text.index("-r requirements")
+        assert 0 <= i < req, \
+            f"{script} must install the bundled stand-in BEFORE requirements"
 
 
 def test_smoke_mode_reports_ok(tmp_path):

@@ -43,6 +43,12 @@ echo "[2/5] Installing dependencies (PySide6 is ~200 MB, first run only)..."
 # (everything else below is already satisfied locally).
 "$PIP" install --upgrade pip --retries 1 --timeout 5 2>/dev/null \
     || echo "  (pip self-upgrade skipped - no network?)"
+# Bundled pure-Python editdistance stand-in FIRST: panphon requires the
+# package, the real C extension has no wheels past Python 3.12 (so pip
+# would compile it and die), and nothing in the app ever calls it.
+# --force-reinstall makes every environment end up on the stand-in even if
+# a real editdistance of the same version slipped in earlier.
+"$PIP" install --force-reinstall vendor/wheels/editdistance-0.8.1-py3-none-any.whl
 if [ "$OFFLINE" -eq 1 ]; then
     "$PIP" install -r requirements-offline.txt pyinstaller
 else

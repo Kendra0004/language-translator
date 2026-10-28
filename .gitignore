@@ -24,3 +24,6 @@ models/
 
 # Build smoke-test log (written by build.ps1 [5/5])
 smoke.log
+
+# Packaging residue (vendor wheel builds)
+*.egg-info/

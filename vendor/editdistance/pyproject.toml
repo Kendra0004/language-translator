@@ -1,0 +1,9 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "editdistance"
+version = "0.8.1"
+description = "Pure-Python Levenshtein stand-in for the editdistance C extension (which has no wheels past Python 3.12)"
+requires-python = ">=3.10"

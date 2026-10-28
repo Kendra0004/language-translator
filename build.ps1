@@ -54,34 +54,36 @@ function Get-PyMajorMinor([string]$exe, [string[]]$preArgs) {
 
 $python = $null
 $pythonArgs = @()
-$newerSeen = $null
+$tooOld = $null
+# Any Python 3.10+ works now: the one C dependency without new wheels
+# (editdistance) is satisfied by the vendored pure-Python stand-in installed
+# below. 3.12 is preferred anyway - it has the most battle-tested wheel set.
 foreach ($candidate in @(
         @("py", @("-3.12")),
         @("py", @("-3.11")),
         @("py", @("-3.10")),
+        @("py", @("-3.14")),
+        @("py", @("-3.13")),
         @("py", @("-3")),
         @("python", @())
     )) {
     $ver = Get-PyMajorMinor $candidate[0] $candidate[1]
     if ($null -eq $ver) { continue }
-    if ($ver -le 12) {
+    if ($ver -ge 10) {
         $python = $candidate[0]
         $pythonArgs = $candidate[1]
         break
     }
-    if ($null -eq $newerSeen) { $newerSeen = $ver }
+    if ($null -eq $tooOld) { $tooOld = $ver }
 }
 
 if (-not $python) {
-    if ($null -ne $newerSeen) {
-        Fail ("Python $newerSeen found, but Python 3.10-3.12 is required on Windows: " +
-              "the 'editdistance' dependency has no prebuilt wheel for Python 3.13+, " +
-              "so installing it would need the MSVC Build Tools.`n" +
-              "Install Python 3.12 from https://www.python.org/downloads/ " +
-              "(tick 'Add python.exe to PATH', prefer the python.org installer over the " +
-              "Microsoft Store one) and re-run this script.")
+    if ($null -ne $tooOld) {
+        Fail ("Only Python 3.$tooOld found, but 3.10 or newer is required. " +
+              "Install the latest Python from https://www.python.org/downloads/ " +
+              "(tick 'Add python.exe to PATH') and re-run this script.")
     }
-    Fail "Python 3.10-3.12 not found. Install it from https://www.python.org/downloads/ and re-run."
+    Fail "Python 3.10+ not found. Install it from https://www.python.org/downloads/ and re-run."
 }
 
 function Invoke-Py([string[]]$PyArgs) {
@@ -107,6 +109,14 @@ Write-Host "[2/5] Installing dependencies (PySide6 is ~200 MB, first run only)" 
 & $pip install --upgrade pip --retries 1 --timeout 5
 if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
     Write-Host "  (pip self-upgrade skipped - no network?)" -ForegroundColor DarkYellow
+}
+# Bundled pure-Python editdistance stand-in FIRST: panphon requires the
+# package, the real C extension has no wheels past Python 3.12 (pip would
+# compile it and die without MSVC), and nothing in the app ever calls it.
+# --force-reinstall makes every environment end up on the stand-in even if
+# a real editdistance of the same version slipped in earlier.
+Step "editdistance stand-in" {
+    & $pip install --force-reinstall ".\vendor\wheels\editdistance-0.8.1-py3-none-any.whl"
 }
 if ($Offline) {
     Step "dependency install" { & $pip install -r requirements-offline.txt pyinstaller }

@@ -57,10 +57,11 @@ including 0.6× / 0.8× slow motion for learners.
 
 ## Installation
 
-All you need is **Python 3.10–3.12** — **3.12 recommended**
-([python.org](https://www.python.org/downloads/)). Avoid Python 3.13 on
-Windows: one dependency (`editdistance`) ships no prebuilt wheel for it,
-so installing would demand the MSVC Build Tools. Git is optional (you can
+All you need is **Python 3.10 or newer** — any current version works,
+**3.12 recommended** ([python.org](https://www.python.org/downloads/)).
+Yes, even 3.13/3.14: the project bundles a small pure-Python stand-in for
+the one dependency (`editdistance`) whose C wheels stop at Python 3.12, so
+nothing has to be compiled on your machine. Git is optional (you can
 download a ZIP instead). Internet is only needed for the first download
 and for online translation.
 
@@ -87,6 +88,7 @@ git clone https://github.com/Kendra0004/language-translator.git
 
 ```bat
 py -3 -m venv .venv
+.\.venv\Scripts\pip install vendor\wheels\editdistance-0.8.1-py3-none-any.whl
 .\.venv\Scripts\pip install -r requirements.txt
 ```
 
@@ -98,7 +100,10 @@ python3 -m venv .venv
 ```
 
 (The `venv` step creates an isolated environment so the app's pinned
-library versions can't break anything else on your machine.)
+library versions can't break anything else on your machine. The bundled
+`editdistance` wheel goes in **before** the requirements on purpose: it
+satisfies panphon's one compile-only dependency, so Python 3.13/3.14 never
+tries to build C code. The build scripts do both steps for you.)
 
 ### 4. Run the app
 
@@ -141,7 +146,7 @@ engine is used.
 |---|---|
 | `'python' is not recognized` | Re-run the Python installer and tick **Add python.exe to PATH**, or use `py -3` instead of `python` |
 | `pip` install fails with SSL/certificate errors | Check your system clock (Settings → Time), or a corporate proxy is blocking PyPI |
-| `Failed building wheel for editdistance` on Windows | You're on Python 3.13+ — that dependency has no wheel for it. Install **Python 3.12** from python.org (not the Microsoft Store) and use `py -3.12` |
+| `Failed building wheel for editdistance` | You're building from **old files** — re-download the ZIP (or `git pull`); the updated scripts install the bundled pure-Python stand-in first. Doing it manually: `pip install vendor\wheels\editdistance-0.8.1-py3-none-any.whl` **before** `-r requirements.txt` |
 | `running scripts is disabled on this system` (build.ps1) | Run `powershell -ExecutionPolicy Bypass -File .\build.ps1` |
 | Translation says `429 Too Many Requests` | Google rate-limited the free endpoint — wait a minute and retry, or install offline mode above |
 | Play button is silent | Install ffmpeg: `winget install ffmpeg` (Windows) or `brew install ffmpeg` (macOS) |
@@ -165,7 +170,7 @@ the pronunciation panel works before declaring success.
 .\build.ps1 -Offline     # also bundle the offline engine (~1 GB extra)
 ```
 
-Requires **Python 3.10–3.12** (3.12 recommended — see Installation).
+Requires **Python 3.10 or newer** (3.12 recommended — see Installation).
 If PowerShell refuses to run scripts, use:
 
 ```powershell
@@ -211,6 +216,8 @@ run.py                     PyInstaller entry point (imports app.main as a packag
 translator.spec            PyInstaller configuration (Windows + Linux)
 build.ps1                  one-command Windows build
 build.sh                   one-command Linux build
+vendor/                    bundled pure-Python editdistance stand-in + wheel
+                           (keeps Python 3.13/3.14 builds compiler-free)
 ```
 
 ## Notes
