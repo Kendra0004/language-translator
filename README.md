@@ -181,6 +181,9 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 ```
 
 Both scripts are otherwise self-contained — nothing else to do.
+Internet is only needed the **first** time (to download the dependencies):
+once `.venv-build` exists, the whole build — tests, packaging and the smoke
+test — runs with no network at all.
 
 ### Why offline is a build flag
 The offline engine (Argostranslate) depends on stanza/torch/spacy, which adds

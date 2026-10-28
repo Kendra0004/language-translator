@@ -38,7 +38,11 @@ PIP=.venv-build/bin/pip
 PYI=.venv-build/bin/pyinstaller
 
 echo "[2/5] Installing dependencies (PySide6 is ~200 MB, first run only)..."
-"$PIP" install --upgrade pip
+# Self-upgrade is best-effort: it needs the package index, but once
+# .venv-build exists the build must also succeed with no network at all
+# (everything else below is already satisfied locally).
+"$PIP" install --upgrade pip --retries 1 --timeout 5 2>/dev/null \
+    || echo "  (pip self-upgrade skipped - no network?)"
 if [ "$OFFLINE" -eq 1 ]; then
     "$PIP" install -r requirements-offline.txt pyinstaller
 else

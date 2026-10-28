@@ -523,6 +523,24 @@ def test_build_ps1_fails_fast_and_prefers_python312():
     assert "LT_SMOKE" in ps1, "Windows build must smoke-test the exe"
 
 
+def test_build_scripts_tolerate_offline_pip_self_upgrade():
+    """The pip self-upgrade is the one step that must reach the index; with
+    .venv-build already populated the whole build has to survive wifi being
+    down, so that single call may warn but never abort (regression)."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(root, "build.sh"), encoding="utf-8") as fh:
+        sh = fh.read()
+    assert "set -euo pipefail" in sh, "build.sh still fails fast overall"
+    i = sh.index("install --upgrade pip")
+    assert "||" in sh[i:i + 160], "build.sh self-upgrade must be best-effort"
+    with open(os.path.join(root, "build.ps1"), encoding="utf-8") as fh:
+        ps1 = fh.read()
+    assert 'Step "pip self-upgrade"' not in ps1, \
+        "build.ps1 self-upgrade must warn, not Fail"
+    assert "no network?" in sh and "no network?" in ps1, \
+        "both scripts must say why the upgrade was skipped"
+
+
 def test_smoke_mode_reports_ok(tmp_path):
     """LT_SMOKE=1 is the packaged-build self test (startup + panel analysis
     + correction): exit code 0 and a SMOKE OK report on stdout and in the

@@ -99,8 +99,15 @@ $pip = ".\.venv-build\Scripts\pip.exe"
 $pyi = ".\.venv-build\Scripts\pyinstaller.exe"
 $venvPy = ".\.venv-build\Scripts\python.exe"
 
-Write-Host "[2/5] Installing dependencies (PySide6 is ~200 MB, first run only)..." -ForegroundColor Cyan
-Step "pip self-upgrade" { & $pip install --upgrade pip }
+Write-Host "[2/5] Installing dependencies (PySide6 is ~200 MB, first run only)" -ForegroundColor Cyan
+# Self-upgrade is best-effort: it needs the package index, but once
+# .venv-build exists the build must also succeed with no network at all
+# (everything else below is already satisfied locally), so a failure here
+# must warn instead of aborting like a real Step.
+& $pip install --upgrade pip --retries 1 --timeout 5
+if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+    Write-Host "  (pip self-upgrade skipped - no network?)" -ForegroundColor DarkYellow
+}
 if ($Offline) {
     Step "dependency install" { & $pip install -r requirements-offline.txt pyinstaller }
 } else {
