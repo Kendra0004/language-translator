@@ -74,6 +74,17 @@ def _run_smoke() -> int:
         lines.append("SMOKE FAIL\n" + traceback.format_exc())
     text = "\n".join(lines) + "\n"
     try:
+        # ANSI consoles/pipes (Windows default cp1252) cannot encode the
+        # IPA characters, which used to raise UnicodeEncodeError inside
+        # print() and lose the whole report to the except below. Report
+        # with '?' replacement instead: the ASCII "SMOKE OK/FAIL" prefix
+        # always lands, the exit code stays the pass/fail signal, and
+        # LT_SMOKE_LOG (written below as UTF-8) keeps the full text.
+        if sys.stdout is not None:
+            try:
+                sys.stdout.reconfigure(errors="replace")
+            except (AttributeError, OSError, ValueError):
+                pass  # StringIO / closed / unbuffered stream: leave as-is
         print(text, end="", flush=True)
     except Exception:  # noqa: BLE001 - no console in windowed builds
         pass

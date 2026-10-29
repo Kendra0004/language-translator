@@ -605,3 +605,32 @@ def test_smoke_mode_reports_ok(tmp_path):
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "SMOKE OK" in proc.stdout, proc.stdout
     assert "SMOKE OK" in log.read_text(encoding="utf-8")
+
+
+def test_smoke_report_survives_ansi_stdout(tmp_path):
+    """Windows' default console/pipe encoding is cp1252 (ANSI), which
+    cannot encode the IPA characters in the smoke report: print() raised
+    UnicodeEncodeError, the defensive except swallowed it, and the whole
+    report vanished while the exit code still said OK - failing the
+    build's test step on Windows. PYTHONIOENCODING=cp1252 reproduces that
+    exact failure class on any platform: the ASCII SMOKE OK prefix must
+    still reach stdout (unencodable chars become '?') while the UTF-8
+    LT_SMOKE_LOG file keeps the full IPA line untouched."""
+    import subprocess
+    import sys
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    log = tmp_path / "smoke-ansi.log"
+    env = dict(os.environ)
+    env.update(LT_SMOKE="1", LT_SMOKE_LOG=str(log),
+               QT_QPA_PLATFORM="offscreen",
+               PYTHONIOENCODING="cp1252")
+    env.pop("LT_UI_SCALE", None)
+    proc = subprocess.run([sys.executable, "-m", "app.main"], cwd=root,
+                          env=env, capture_output=True, text=True, timeout=180)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "SMOKE OK" in proc.stdout, \
+        f"smoke report lost on ANSI stdout: {proc.stdout!r}"
+    assert "words=" in proc.stdout, "report structure must survive too"
+    full = log.read_text(encoding="utf-8")
+    assert "SMOKE OK" in full and "ipa=/" in full, \
+        "the UTF-8 log must keep the untruncated report"
