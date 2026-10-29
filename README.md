@@ -147,6 +147,7 @@ engine is used.
 | `'python' is not recognized` | Re-run the Python installer and tick **Add python.exe to PATH**, or use `py -3` instead of `python` |
 | `pip` install fails with SSL/certificate errors | Check your system clock (Settings → Time), or a corporate proxy is blocking PyPI |
 | `Failed building wheel for editdistance` | You're building from **old files** — re-download the ZIP (or `git pull`); the updated scripts install the bundled pure-Python stand-in first. Doing it manually: `pip install vendor\wheels\editdistance-0.8.1-py3-none-any.whl` **before** `-r requirements.txt` |
+| `Pronunciation unavailable: 'charmap' codec can't decode byte ...` | Old build on Windows: the pronunciation engine read its UTF-8 data files with the system codepage. Re-download the ZIP (or `git pull`) and rebuild — the app now forces UTF-8 for those reads |
 | `running scripts is disabled on this system` (build.ps1) | Run `powershell -ExecutionPolicy Bypass -File .\build.ps1` |
 | Translation says `429 Too Many Requests` | Google rate-limited the free endpoint — wait a minute and retry, or install offline mode above |
 | Play button is silent | Install ffmpeg: `winget install ffmpeg` (Windows) or `brew install ffmpeg` (macOS) |
