@@ -634,3 +634,81 @@ def test_smoke_report_survives_ansi_stdout(tmp_path):
     full = log.read_text(encoding="utf-8")
     assert "SMOKE OK" in full and "ipa=/" in full, \
         "the UTF-8 log must keep the untruncated report"
+
+
+# ---------------------------------------------------------- audio panel
+def test_play_without_analysis_shows_hint(qapp):
+    """Clicking Play with nothing translated used to be a silent no-op."""
+    from app.ui.pronunciation_panel import PronunciationPanel
+
+    panel = PronunciationPanel()
+    panel._analysis = None
+    panel._play_sentence()
+    assert "Nothing to play yet" in panel.empty_label.text()
+    assert not panel.empty_label.isHidden()
+    # house teardown: let Qt destroy the widget (direct Python del of
+    # live QObjects makes shiboken warn and segfault at shutdown)
+    panel.close()
+    panel.deleteLater()
+    qapp.processEvents()
+
+
+def test_play_click_shows_fetching_before_tts(qapp):
+    """The TTS download takes 1-2s: the click must give immediate
+    feedback instead of looking dead."""
+    from types import SimpleNamespace
+
+    from app.ui.pronunciation_panel import PronunciationPanel
+
+    panel = PronunciationPanel()
+    panel._analysis = SimpleNamespace(words=[SimpleNamespace(core="bonjour")],
+                                      lang="fr")
+    requested = []
+    panel._worker.request = lambda *a: requested.append(a)  # no network
+    panel._play_sentence()
+    assert requested == [("bonjour", "fr", 1.0)]
+    assert "Getting audio" in panel.empty_label.text()
+    assert not panel.empty_label.isHidden()
+    panel.close()
+    panel.deleteLater()
+    qapp.processEvents()
+
+
+def test_external_playback_failure_is_surfaced(qapp):
+    """Popen()-success used to count as 'played' while ffplay died with
+    -loglevel quiet: a dead audio device meant silence AND no message.
+    The watched process must turn a nonzero exit into a visible panel
+    message carrying ffplay's own stderr; a clean exit stays quiet."""
+    from PySide6.QtCore import QByteArray, QObject, QProcess, Signal
+
+    from app.ui.pronunciation_panel import PronunciationPanel
+
+    panel = PronunciationPanel()
+
+    class _FakeProc(QObject):
+        finished = Signal(int, object)
+
+        def readAllStandardOutput(self):
+            return QByteArray(b"ALSA lib: device or resource busy\n")
+
+    fake = _FakeProc()
+    fake.finished.connect(panel._on_external_finished)
+
+    # played to the end -> no message
+    panel._proc = fake
+    fake.finished.emit(0, QProcess.ExitStatus.NormalExit)
+    assert panel.empty_label.text() == ""
+
+    # died mid-play -> visible message including ffplay's stderr line
+    panel._proc = fake
+    fake.finished.emit(1, QProcess.ExitStatus.NormalExit)
+    assert "Audio playback failed" in panel.empty_label.text()
+    assert "device or resource busy" in panel.empty_label.text()
+    assert not panel.empty_label.isHidden()
+    # house teardown: connected process first, then the panel - both via
+    # the event loop (direct Python del of live QObjects makes shiboken
+    # warn and segfault at shutdown)
+    fake.deleteLater()
+    panel.close()
+    panel.deleteLater()
+    qapp.processEvents()

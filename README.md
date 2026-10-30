@@ -150,7 +150,7 @@ engine is used.
 | `Pronunciation unavailable: 'charmap' codec can't decode byte ...` | Old build on Windows: the pronunciation engine read its UTF-8 data files with the system codepage. Re-download the ZIP (or `git pull`) and rebuild — the app now forces UTF-8 for those reads |
 | `running scripts is disabled on this system` (build.ps1) | Run `powershell -ExecutionPolicy Bypass -File .\build.ps1` |
 | Translation says `429 Too Many Requests` | Google rate-limited the free endpoint — wait a minute and retry, or install offline mode above |
-| Play button is silent | Install ffmpeg: `winget install ffmpeg` (Windows) or `brew install ffmpeg` (macOS) |
+| Play button is silent | Install ffmpeg: `winget install ffmpeg` (Windows), `brew install ffmpeg` (macOS) or `sudo apt install ffmpeg` (Linux/WSL). **WSL:** if sound stopped everywhere, run `wsl --shutdown` in Windows PowerShell and reopen — the WSLg audio bridge goes stale. The panel now shows the exact playback error under the buttons instead of staying quiet |
 | Windows SmartScreen says "Windows protected your PC" on a built `.exe` | Click **More info** → **Run anyway** (the binary isn't code-signed) |
 
 Tests: `.venv/bin/python -m pytest tests -q`  
