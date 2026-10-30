@@ -712,3 +712,72 @@ def test_external_playback_failure_is_surfaced(qapp):
     panel.close()
     panel.deleteLater()
     qapp.processEvents()
+
+
+def test_ffplay_env_strips_only_the_bundle(monkeypatch):
+    """The frozen bootloader prepends the bundle (Qt's own FFmpeg,
+    libavutil.so.61) to LD_LIBRARY_PATH; wherever the system ffmpeg
+    shares that SONAME the system ffplay binds Qt's stripped copy and
+    dies with 'symbol lookup error'. Only bundle entries may be removed:
+    the user's own LD_LIBRARY_PATH entries must survive, an all-bundle
+    value drops the variable entirely, and source runs stay untouched."""
+    import sys
+
+    from app.ui.pronunciation_panel import _child_env
+
+    bundle = "/opt/app/_internal"
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", bundle, raising=False)
+
+    out = _child_env({"LD_LIBRARY_PATH": os.pathsep.join(
+                          [bundle, bundle + "/PySide6/Qt/lib", "/opt/mylibs"]),
+                      "PATH": "/usr/bin"})
+    assert out["LD_LIBRARY_PATH"] == "/opt/mylibs", \
+        "bundle entries out, user's own entry kept"
+    assert out["PATH"] == "/usr/bin"
+
+    assert "LD_LIBRARY_PATH" not in _child_env({"LD_LIBRARY_PATH": bundle}), \
+        "an all-bundle value must drop the variable"
+
+    monkeypatch.delattr(sys, "frozen")
+    assert _child_env({"LD_LIBRARY_PATH": bundle}) == \
+        {"LD_LIBRARY_PATH": bundle}, "source runs must stay untouched"
+
+
+def test_ffplay_spawned_without_bundle_libs(qapp, tmp_path, monkeypatch):
+    """End to end (non-Windows): the player process must never SEE the
+    bundle in LD_LIBRARY_PATH, while entries the user set themselves
+    are passed through."""
+    import sys
+
+    if sys.platform.startswith("win"):
+        pytest.skip("the external-player branch is Linux/macOS only")
+    from app.ui import pronunciation_panel as pp
+
+    ld_file = tmp_path / "ld.txt"
+    script = tmp_path / "fake-ffplay"
+    script.write_text("#!/bin/sh\necho \"$LD_LIBRARY_PATH\" > "
+                      f"\"{ld_file}\"\n", encoding="utf-8")
+    script.chmod(0o755)
+    monkeypatch.setattr(pp.shutil, "which", lambda name: str(script))
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    bundle = str(tmp_path / "bundle")
+    monkeypatch.setattr(sys, "_MEIPASS", bundle, raising=False)
+    monkeypatch.setenv("LD_LIBRARY_PATH",
+                       os.pathsep.join([bundle, "/opt/keepme"]))
+
+    panel = pp.PronunciationPanel()
+    assert panel._start_external(str(tmp_path / "x.mp3"), 1.0) is True
+
+    deadline = time.time() + 10
+    while time.time() < deadline and not ld_file.exists():
+        qapp.processEvents()
+        time.sleep(0.02)
+    assert ld_file.exists(), "the spawned player never ran"
+    got = ld_file.read_text().strip()
+    assert bundle not in got, f"bundle leaked into player env: {got!r}"
+    assert "keepme" in got, f"user's own entry must survive: {got!r}"
+
+    panel.close()
+    panel.deleteLater()
+    qapp.processEvents()

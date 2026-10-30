@@ -8,7 +8,9 @@ import shutil
 import sys
 import threading
 
-from PySide6.QtCore import QObject, QProcess, Qt, QUrl, Signal
+from PySide6.QtCore import (
+    QObject, QProcess, QProcessEnvironment, Qt, QUrl, Signal,
+)
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
     QComboBox, QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea,
@@ -20,6 +22,42 @@ from ..core.pronunciation import Analysis, WordPron
 from ..theme import px
 
 log = logging.getLogger(__name__)
+
+
+def _child_env(env: dict) -> dict:
+    """Environment for the external player: bundle-free LD_LIBRARY_PATH.
+
+    The frozen app's bootloader prepends the bundle to LD_LIBRARY_PATH so
+    Qt finds its libraries - but the bundle also ships Qt's own FFmpeg
+    copies (``libavutil.so.61``). On any machine whose system FFmpeg
+    uses the same SONAME (e.g. FFmpeg 8.x: avutil.61/avfilter.12), the
+    system ffplay then binds Qt's stripped copy and dies with
+    ``symbol lookup error ... undefined symbol`` - silent no-sound on
+    machines where the SONAMEs differ, hard failure where they match.
+
+    So: remove only the entries inside our own bundle; anything the user
+    set themselves stays. No-op in source runs (no ``sys.frozen``).
+    """
+    out = dict(env)
+    ld = out.get("LD_LIBRARY_PATH")
+    if not ld or not getattr(sys, "frozen", False):
+        return out
+    base = os.path.realpath(getattr(sys, "_MEIPASS", "") or "")
+    if not base:
+        return out
+    keep = []
+    for entry in ld.split(os.pathsep):
+        if not entry:
+            continue
+        real = os.path.realpath(entry)
+        if real == base or real.startswith(base + os.sep):
+            continue  # our bundle - Qt's FFmpeg must not leak into ffplay
+        keep.append(entry)
+    if keep:
+        out["LD_LIBRARY_PATH"] = os.pathsep.join(keep)
+    else:
+        out.pop("LD_LIBRARY_PATH", None)
+    return out
 
 
 class _TTSWorker(QObject):
@@ -341,6 +379,12 @@ class PronunciationPanel(QWidget):
             proc = QProcess(self)
             proc.setProcessChannelMode(
                 QProcess.ProcessChannelMode.MergedChannels)
+            # never let the bootloader-injected bundle libs (Qt's FFmpeg)
+            # leak into the system player - see _child_env
+            qenv = QProcessEnvironment()
+            for key, val in _child_env(dict(os.environ)).items():
+                qenv.insert(key, val)
+            proc.setProcessEnvironment(qenv)
             proc.finished.connect(self._on_external_finished)
             proc.finished.connect(proc.deleteLater)
             proc.errorOccurred.connect(self._on_external_error)
